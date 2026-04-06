@@ -129,9 +129,9 @@ exports.extractUserInsights = onDocumentWritten(
       // Apply todo updates: close identified todos, append new ones
       const closedIdSet = new Set(todosUpdate.closedIds);
       const updatedTodos = currentTodos.map((t) =>
-        closedIdSet.has(t.id) && t.status === "open"
-          ? {...t, status: "closed", closedAt: now}
-          : t,
+        closedIdSet.has(t.id) && t.status === "open" ?
+          {...t, status: "closed", closedAt: now} :
+          t,
       );
       for (const text of todosUpdate.newItems) {
         if (text && typeof text === "string") {

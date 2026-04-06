@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useState, useEffect, useRef } from "react";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ListTodo, Circle, CheckCircle2, Clock, RotateCcw } from "lucide-react";
+import { ListTodo, Circle, CheckCircle2, Clock, RotateCcw, Plus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +29,9 @@ const TodoList = () => {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [newText, setNewText] = useState("");
+  const [adding, setAdding] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user?.email) { setLoading(false); return; }
@@ -67,6 +72,37 @@ const TodoList = () => {
   const openTodos = todos.filter((t) => t.status === "open");
   const closedTodos = todos.filter((t) => t.status === "closed");
 
+  const handleAdd = async () => {
+    const text = newText.trim();
+    if (!text || !user?.email || adding) return;
+    setAdding(true);
+    const newItem: TodoItem = {
+      id: crypto.randomUUID(),
+      text,
+      status: "open",
+      createdAt: new Date() as unknown as TodoItem["createdAt"],
+      closedAt: null,
+    };
+    const updated = [newItem, ...todos];
+    setTodos(updated);
+    setNewText("");
+    inputRef.current?.focus();
+    try {
+      const ref = doc(db, "todo", user.email);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await updateDoc(ref, { items: updated });
+      } else {
+        await setDoc(ref, { items: updated, lastUpdated: new Date() });
+      }
+    } catch (err) {
+      console.error("TodoList: add failed", err);
+      setTodos(todos);
+    } finally {
+      setAdding(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto space-y-3 pt-2">
@@ -85,9 +121,27 @@ const TodoList = () => {
           <ListTodo className="h-6 w-6 text-primary" /> To-Do
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Action items extracted from your conversations with Avyaa. Click any item to toggle it.
+          Action items extracted from your conversations with Avyaa, or added by you.
         </p>
       </div>
+
+      {/* Add todo input */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); handleAdd(); }}
+        className="flex gap-2"
+      >
+        <Input
+          ref={inputRef}
+          value={newText}
+          onChange={(e) => setNewText(e.target.value)}
+          placeholder="Add a to-do..."
+          className="flex-1"
+          disabled={adding}
+        />
+        <Button type="submit" disabled={!newText.trim() || adding} size="sm" className="gap-1.5">
+          <Plus className="h-4 w-4" /> Add
+        </Button>
+      </form>
 
       {todos.length === 0 ? (
         <Card className="border-none shadow-sm">
