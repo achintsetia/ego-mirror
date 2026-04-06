@@ -44,22 +44,26 @@ function MiniChart({
   loading,
   unit,
   emptyText,
+  domain,
+  yWidth = 44,
 }: {
   data: ChartPoint[];
   color: string;
   loading: boolean;
   unit: string;
   emptyText: string;
+  domain?: [number, number];
+  yWidth?: number;
 }) {
-  if (loading) return <div className="h-28 bg-muted/40 rounded-lg animate-pulse" />;
+  if (loading) return <div className="h-36 bg-muted/40 rounded-lg animate-pulse" />;
   if (!data.length)
     return <p className="text-xs text-muted-foreground py-6 text-center">{emptyText}</p>;
 
   const chartData = data.map((p) => ({ label: p.label, value: p.value ?? 0 }));
 
   return (
-    <ResponsiveContainer width="100%" height={112}>
-      <BarChart data={chartData} barCategoryGap="30%">
+    <ResponsiveContainer width="100%" height={140}>
+      <BarChart data={chartData} barCategoryGap="30%" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
         <XAxis
           dataKey="label"
@@ -68,7 +72,15 @@ function MiniChart({
           tickLine={false}
           interval="preserveStartEnd"
         />
-        <YAxis hide />
+        <YAxis
+          tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+          axisLine={false}
+          tickLine={false}
+          width={yWidth}
+          tickFormatter={(v: number) => `${v}${unit.startsWith("/") ? unit : " " + unit}`}
+          tickCount={4}
+          domain={domain}
+        />
         <RechartsTooltip
           contentStyle={{
             background: "hsl(var(--popover))",
@@ -190,7 +202,8 @@ const HabitTracker = () => {
                 data={productivityChart}
                 color="hsl(var(--sky))"
                 loading={chartLoading}
-                unit="/ 100"
+                unit="/10"
+                domain={[0, 10]}
                 emptyText="No productivity data yet — tell Avyaa about your day."
               />
             </CardContent>
@@ -208,6 +221,7 @@ const HabitTracker = () => {
                 color="hsl(var(--peach))"
                 loading={chartLoading}
                 unit="kcal"
+                yWidth={62}
                 emptyText="No food data yet — tell Avyaa what you ate."
               />
             </CardContent>

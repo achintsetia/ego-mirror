@@ -1,4 +1,4 @@
-import { Mic, Target, Brain, BarChart3, Users, Settings, Home, LogOut } from "lucide-react";
+import { Mic, Target, Brain, BarChart3, Users, Settings, Home, LogOut, Lock, ListTodo } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -18,23 +18,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
-  { title: "Home", url: "/", icon: Home },
-  { title: "Habit Tracker", url: "/habits", icon: Target },
-  { title: "Voice Companion", url: "/voice", icon: Mic },
-  { title: "Personality", url: "/personality", icon: Brain },
-  { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "Home", url: "/", icon: Home, requiresConversation: false },
+  { title: "Talk to Avyaa", url: "/voice", icon: Mic, requiresConversation: false },
+  { title: "To-Do", url: "/todos", icon: ListTodo, requiresConversation: false },
+  { title: "Habit Tracker", url: "/habits", icon: Target, requiresConversation: true },
+  { title: "Personality", url: "/personality", icon: Brain, requiresConversation: true },
+  { title: "Reports", url: "/reports", icon: BarChart3, requiresConversation: true },
 ];
 
 const adminItems = [
-  { title: "Users", url: "/admin/users", icon: Users },
-  { title: "AI Models", url: "/admin/models", icon: Settings },
+  { title: "Users", url: "/admin/users", icon: Users, requiresConversation: true },
+  { title: "AI Models", url: "/admin/models", icon: Settings, requiresConversation: true },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, hasConversation, isAdmin } = useAuth();
 
   const initials = user?.displayName
     ? user.displayName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
@@ -73,47 +74,57 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {navItems.map((item) => {
+                const locked = item.requiresConversation && !hasConversation;
+                return (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={location.pathname === item.url}>
                     <NavLink
                       to={item.url}
                       end
-                      className="hover:bg-muted/50"
+                      className={locked ? "opacity-40 pointer-events-none select-none" : "hover:bg-muted/50"}
                       activeClassName="bg-secondary text-secondary-foreground font-semibold"
                     >
                       <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {!collapsed && <span className="flex-1">{item.title}</span>}
+                      {locked && !collapsed && <Lock className="h-3 w-3 shrink-0" />}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {isAdmin && (
         <SidebarGroup>
           <SidebarGroupLabel>Admin</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {adminItems.map((item) => (
+              {adminItems.map((item) => {
+                const locked = item.requiresConversation && !hasConversation;
+                return (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={location.pathname === item.url}>
                     <NavLink
                       to={item.url}
                       end
-                      className="hover:bg-muted/50"
+                      className={locked ? "opacity-40 pointer-events-none select-none" : "hover:bg-muted/50"}
                       activeClassName="bg-secondary text-secondary-foreground font-semibold"
                     >
                       <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {!collapsed && <span className="flex-1">{item.title}</span>}
+                      {locked && !collapsed && <Lock className="h-3 w-3 shrink-0" />}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">

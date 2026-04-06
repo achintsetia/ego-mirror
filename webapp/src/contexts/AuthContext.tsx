@@ -12,7 +12,10 @@ import { auth, db } from "@/firebase";
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isAdmin: boolean;
   isFirstLogin: boolean;
+  hasConversation: boolean;
+  markConversationDone: () => void;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -20,7 +23,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  isAdmin: false,
   isFirstLogin: false,
+  hasConversation: false,
+  markConversationDone: () => {},
   signInWithGoogle: async () => {},
   logout: async () => {},
 });
@@ -28,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
 
   useEffect(() => {
@@ -45,8 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
           });
+          setIsAdmin(false);
         } else {
           await setDoc(profileRef, { lastLoginAt: serverTimestamp() }, { merge: true });
+          setIsAdmin(profileSnap.data()?.is_admin === true);
         }
 
         // Show the modal if the user has no conversations yet
@@ -58,12 +67,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsFirstLogin(false);
         }
       } else {
+        setIsAdmin(false);
         setIsFirstLogin(false);
       }
       setUser(firebaseUser);
       setLoading(false);
     });
     return unsubscribe;
+  }, []);
+
+  const markConversationDone = useCallback(() => {
+    setIsFirstLogin(false);
   }, []);
 
   const signInWithGoogle = async () => {
@@ -76,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isFirstLogin, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, isFirstLogin, hasConversation: !isFirstLogin, markConversationDone, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

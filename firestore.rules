@@ -92,6 +92,12 @@ service cloud.firestore {
       }
     }
 
+    // Todos — written by Cloud Functions (auto-extract) and by users (manual status toggle)
+    match /todo/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if isAuthenticated() && request.auth.token.email == email;
+    }
+
     // Default deny everything else
     match /{document=**} {
       allow read, write: if false;

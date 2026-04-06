@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/Layout";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ConversationGate } from "@/components/ConversationGate";
+import { AdminGate } from "@/components/AdminGate";
 import Home from "./pages/Home";
 import Landing from "./pages/Landing";
 import VoiceCompanion from "./pages/VoiceCompanion";
@@ -13,6 +15,7 @@ import PersonalityEvolution from "./pages/PersonalityEvolution";
 import Reports from "./pages/Reports";
 import AdminUsers from "./pages/AdminUsers";
 import AdminModels from "./pages/AdminModels";
+import TodoList from "./pages/TodoList";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,12 +42,13 @@ function AppRoutes() {
     <Layout>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/habits" element={<HabitTracker />} />
         <Route path="/voice" element={<VoiceCompanion />} />
-        <Route path="/personality" element={<PersonalityEvolution />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/admin/users" element={<AdminUsers />} />
-        <Route path="/admin/models" element={<AdminModels />} />
+        <Route path="/todos" element={<TodoList />} />
+        <Route path="/habits" element={<ConversationGate><HabitTracker /></ConversationGate>} />
+        <Route path="/personality" element={<ConversationGate><PersonalityEvolution /></ConversationGate>} />
+        <Route path="/reports" element={<ConversationGate><Reports /></ConversationGate>} />
+        <Route path="/admin/users" element={<AdminGate><AdminUsers /></AdminGate>} />
+        <Route path="/admin/models" element={<AdminGate><AdminModels /></AdminGate>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>

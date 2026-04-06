@@ -197,6 +197,149 @@ export const weeklyReport: WeeklyReport = {
   })),
 };
 
+// ── Avyaa Conversation Sessions ──
+export interface AvyaaSession {
+  id: string;
+  date: string; // yyyy-MM-dd
+  preview: string;
+  messages: ChatMessage[];
+}
+
+const sessionMessages: { preview: string; messages: ChatMessage[] }[] = [
+  {
+    preview: "Reflected on a productive deep work session and meditation streak.",
+    messages: [
+      { id: "1", sender: "ai", text: "Good evening! How was your day today? 🌙", timestamp: "8:30 PM" },
+      { id: "2", sender: "user", text: "It was pretty productive actually. Had a long deep work session in the morning.", timestamp: "8:31 PM" },
+      { id: "3", sender: "ai", text: "That's wonderful! Your morning deep work sessions are getting longer — 72 minutes this week vs 55 last week. What did you work on?", timestamp: "8:31 PM" },
+      { id: "4", sender: "user", text: "Building a new feature module. Got into a real flow state.", timestamp: "8:32 PM" },
+      { id: "5", sender: "ai", text: "Flow states are your superpower! You enter them more easily on days you meditate first. Did you meditate today?", timestamp: "8:32 PM" },
+      { id: "6", sender: "user", text: "Yes, 10 minutes this morning. I think it really does help.", timestamp: "8:33 PM" },
+      { id: "7", sender: "ai", text: "That's your 12-day meditation streak! 🎉 How were your energy levels throughout the day?", timestamp: "8:33 PM" },
+      { id: "8", sender: "user", text: "Dipped after the 2pm meeting but a walk helped.", timestamp: "8:34 PM" },
+      { id: "9", sender: "ai", text: "Smart recovery. Try a 2-minute breathing exercise before meetings to prevent the post-meeting crash. 💫", timestamp: "8:35 PM" },
+    ],
+  },
+  {
+    preview: "Discussed feeling overwhelmed and strategies to manage workload.",
+    messages: [
+      { id: "1", sender: "ai", text: "Hey, how are you doing today?", timestamp: "9:00 PM" },
+      { id: "2", sender: "user", text: "Honestly, a bit overwhelmed. Too many things on my plate.", timestamp: "9:01 PM" },
+      { id: "3", sender: "ai", text: "I hear you. Overwhelm often signals that your task list doesn't match your priorities. What's weighing on you most?", timestamp: "9:01 PM" },
+      { id: "4", sender: "user", text: "Work deadlines and I haven't exercised in 3 days.", timestamp: "9:02 PM" },
+      { id: "5", sender: "ai", text: "Breaking your exercise streak often feeds the overwhelm — movement reduces cortisol. Even a 10-minute walk tomorrow morning can reset your baseline.", timestamp: "9:03 PM" },
+      { id: "6", sender: "user", text: "That's a good idea. I'll try that.", timestamp: "9:04 PM" },
+      { id: "7", sender: "ai", text: "Great. And for deadlines — write down just the three most critical tasks tonight so tomorrow starts with clarity, not chaos. 🌿", timestamp: "9:04 PM" },
+    ],
+  },
+  {
+    preview: "Celebrated a personal milestone and reviewed weekly progress.",
+    messages: [
+      { id: "1", sender: "ai", text: "Happy Sunday! How did your week wrap up?", timestamp: "7:45 PM" },
+      { id: "2", sender: "user", text: "Really well! I hit my reading goal for the first time in months.", timestamp: "7:46 PM" },
+      { id: "3", sender: "ai", text: "That's a big deal — consistency with reading has been something you've been working toward. What made this week different?", timestamp: "7:46 PM" },
+      { id: "4", sender: "user", text: "I started reading before bed instead of scrolling.", timestamp: "7:47 PM" },
+      { id: "5", sender: "ai", text: "Brilliant habit swap. You're replacing a low-value activity with one that serves your growth. I'll track this pattern. 📚", timestamp: "7:48 PM" },
+      { id: "6", sender: "user", text: "Also slept better this week overall.", timestamp: "7:49 PM" },
+      { id: "7", sender: "ai", text: "The two are connected — reading before bed reduces screen-time blue light and quiets the mind. Your sleep score and mood are both trending up this week. Keep this going! 🌟", timestamp: "7:49 PM" },
+    ],
+  },
+  {
+    preview: "Talked through a stressful work situation and emotional response.",
+    messages: [
+      { id: "1", sender: "ai", text: "Good evening. How are you feeling tonight?", timestamp: "10:15 PM" },
+      { id: "2", sender: "user", text: "Stressed. Had a difficult conversation with my manager.", timestamp: "10:16 PM" },
+      { id: "3", sender: "ai", text: "That sounds tough. Do you want to talk through what happened, or would you prefer to focus on how you're feeling right now?", timestamp: "10:16 PM" },
+      { id: "4", sender: "user", text: "Both, I guess. I feel like my work isn't being recognized.", timestamp: "10:17 PM" },
+      { id: "5", sender: "ai", text: "That feeling of invisible effort is deeply frustrating. Did you get a chance to express that in the conversation?", timestamp: "10:18 PM" },
+      { id: "6", sender: "user", text: "Not really. I didn't want to seem defensive.", timestamp: "10:19 PM" },
+      { id: "7", sender: "ai", text: "Advocating for yourself isn't defensiveness — it's clarity. Next time, try framing it as: 'I want to make sure we're aligned on impact.' That opens conversation without confrontation. 💬", timestamp: "10:20 PM" },
+    ],
+  },
+  {
+    preview: "Checked in after a great gym session and nutrition wins.",
+    messages: [
+      { id: "1", sender: "ai", text: "Hi! How was today?", timestamp: "6:30 PM" },
+      { id: "2", sender: "user", text: "Amazing! Hit a new personal best at the gym.", timestamp: "6:31 PM" },
+      { id: "3", sender: "ai", text: "Yes! Your exercise streak is back on track after last week's dip. What was the PR?", timestamp: "6:31 PM" },
+      { id: "4", sender: "user", text: "Deadlifted 120kg for the first time.", timestamp: "6:32 PM" },
+      { id: "5", sender: "ai", text: "That's incredible — your consistency over the last 3 weeks built the foundation for this. How did it feel?", timestamp: "6:32 PM" },
+      { id: "6", sender: "user", text: "Honestly empowering. And I ate really clean all day too.", timestamp: "6:33 PM" },
+      { id: "7", sender: "ai", text: "Physical wins and nutritional wins compound each other. Days like today are worth anchoring in memory — they remind you what's possible. 🏋️", timestamp: "6:33 PM" },
+    ],
+  },
+  {
+    preview: "Explored feelings of creative stagnation and finding inspiration.",
+    messages: [
+      { id: "1", sender: "ai", text: "Good morning! Starting early today?", timestamp: "7:20 AM" },
+      { id: "2", sender: "user", text: "Yeah, couldn't sleep. Feeling creatively stuck.", timestamp: "7:21 AM" },
+      { id: "3", sender: "ai", text: "Creative blocks often mask something deeper — boredom, fear, or burnout. Which resonates most?", timestamp: "7:22 AM" },
+      { id: "4", sender: "user", text: "Probably fear. Of the work not being good enough.", timestamp: "7:23 AM" },
+      { id: "5", sender: "ai", text: "That's the perfectionism trap. The antidote is volume over perfection — create badly, create freely, edit later. What's one tiny creative act you could do in the next 10 minutes?", timestamp: "7:24 AM" },
+      { id: "6", sender: "user", text: "Write one paragraph. No editing.", timestamp: "7:25 AM" },
+      { id: "7", sender: "ai", text: "Perfect. Go do it. I'll be here when you're back. ✍️", timestamp: "7:25 AM" },
+    ],
+  },
+  {
+    preview: "Monthly reflection — major growth areas and patterns.",
+    messages: [
+      { id: "1", sender: "ai", text: "It's the end of the month — time for a deeper reflection. How do you feel about January overall?", timestamp: "9:00 PM" },
+      { id: "2", sender: "user", text: "Better than December. More consistent with habits.", timestamp: "9:01 PM" },
+      { id: "3", sender: "ai", text: "The data confirms it — your habit completion rate was 71% vs 54% in December. Meditation and reading drove the most improvement.", timestamp: "9:01 PM" },
+      { id: "4", sender: "user", text: "I want to add journaling in February.", timestamp: "9:02 PM" },
+      { id: "5", sender: "ai", text: "Smart — but add it to an existing trigger so it stacks. Try journaling right after your morning meditation when you already have a focused headspace.", timestamp: "9:03 PM" },
+      { id: "6", sender: "user", text: "That makes sense. Habit stacking.", timestamp: "9:04 PM" },
+      { id: "7", sender: "ai", text: "Exactly. You're thinking like someone who understands their own system. That's a meaningful shift. 🌱", timestamp: "9:04 PM" },
+    ],
+  },
+  {
+    preview: "Discussed a conflict with a friend and how to move forward.",
+    messages: [
+      { id: "1", sender: "ai", text: "Hey. You seem a bit quiet tonight — how are you?", timestamp: "8:00 PM" },
+      { id: "2", sender: "user", text: "Had a falling out with a close friend. It's been on my mind.", timestamp: "8:01 PM" },
+      { id: "3", sender: "ai", text: "Friendship friction is some of the heaviest emotional weight. Do you want to share what happened?", timestamp: "8:02 PM" },
+      { id: "4", sender: "user", text: "We disagreed over something I said that came out wrong.", timestamp: "8:03 PM" },
+      { id: "5", sender: "ai", text: "Unintentional hurt is the hardest kind — it carries guilt without clear cause. Have you reached out to clarify your intent?", timestamp: "8:04 PM" },
+      { id: "6", sender: "user", text: "Not yet. I don't want to make it worse.", timestamp: "8:05 PM" },
+      { id: "7", sender: "ai", text: "Silence often feels safer but can solidify misunderstanding. A short message like 'I've been thinking about what happened and I want to understand how you felt' opens a door without pressure. 💛", timestamp: "8:05 PM" },
+    ],
+  },
+  {
+    preview: "Set intentions for the week ahead and reviewed goals.",
+    messages: [
+      { id: "1", sender: "ai", text: "New week starting tomorrow — what are you going into it with?", timestamp: "9:30 PM" },
+      { id: "2", sender: "user", text: "I want to focus on finishing the project and being more present.", timestamp: "9:31 PM" },
+      { id: "3", sender: "ai", text: "Two strong intentions. 'Being more present' is beautiful — what does that look like in practice for you?", timestamp: "9:32 PM" },
+      { id: "4", sender: "user", text: "Phone away during meals and conversations.", timestamp: "9:33 PM" },
+      { id: "5", sender: "ai", text: "Simple and powerful. Let's revisit this on Friday to see how it went. I'll note it as an intention for the week.", timestamp: "9:33 PM" },
+      { id: "6", sender: "user", text: "Also want to sleep by 11 every night.", timestamp: "9:34 PM" },
+      { id: "7", sender: "ai", text: "Your data shows you perform best after 7+ hours of sleep. A consistent 11pm bedtime would be a game-changer. I'll track it for you. 🌙", timestamp: "9:34 PM" },
+    ],
+  },
+  {
+    preview: "Processed feelings of gratitude and meaningful moments.",
+    messages: [
+      { id: "1", sender: "ai", text: "Good evening! Anything worth celebrating today?", timestamp: "8:45 PM" },
+      { id: "2", sender: "user", text: "It was a quiet day but I felt really at peace.", timestamp: "8:46 PM" },
+      { id: "3", sender: "ai", text: "Peaceful days are underrated. What made it feel that way?", timestamp: "8:46 PM" },
+      { id: "4", sender: "user", text: "Had coffee on the balcony in the morning without checking my phone.", timestamp: "8:47 PM" },
+      { id: "5", sender: "ai", text: "That's a small act of presence with outsized effect. Moments like that replenish your reserves. Did anything else stand out?", timestamp: "8:48 PM" },
+      { id: "6", sender: "user", text: "Called my parents and had a real conversation for once.", timestamp: "8:49 PM" },
+      { id: "7", sender: "ai", text: "Connection with family is one of the highest-rated contributors to well-being in your reflection patterns. Days with real conversations consistently score higher on your mood index. Treasure these. ❤️", timestamp: "8:49 PM" },
+    ],
+  },
+];
+
+// Generate sessions spread across the last 3 months (~90 days)
+const sessionDayOffsets = [1, 4, 8, 13, 17, 22, 28, 33, 40, 47, 55, 62, 68, 75, 82];
+
+export const avyaaSessions: AvyaaSession[] = sessionDayOffsets.map((offset, i) => ({
+  id: `session-${i + 1}`,
+  date: format(subDays(today, offset), "yyyy-MM-dd"),
+  preview: sessionMessages[i % sessionMessages.length].preview,
+  messages: sessionMessages[i % sessionMessages.length].messages,
+}));
+
 export const monthlyReport: WeeklyReport = {
   period: "This Month",
   avgMood: 6.8,

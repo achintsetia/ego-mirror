@@ -38,6 +38,14 @@ export interface WeekEntry {
   productivity: number;
 }
 
+export interface TodoItem {
+  id: string;
+  text: string;
+  status: "open" | "closed";
+  createdAt: unknown;
+  closedAt: unknown | null;
+}
+
 export interface HomeData {
   loading: boolean;
   today: TodaySnapshot;
@@ -45,6 +53,7 @@ export interface HomeData {
   goals: string[];
   goodHabits: string[];
   badHabits: string[];
+  todos: TodoItem[];
 }
 
 const defaultToday = (): TodaySnapshot => ({
@@ -74,6 +83,7 @@ export const useHomeData = (): HomeData => {
   const [goals, setGoals] = useState<string[]>([]);
   const [goodHabits, setGoodHabits] = useState<string[]>([]);
   const [badHabits, setBadHabits] = useState<string[]>([]);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
 
   useEffect(() => {
     if (!user?.email) {
@@ -111,12 +121,13 @@ export const useHomeData = (): HomeData => {
 
         console.log("[useHomeData] resolved dateKey:", resolvedDateKey, "has session:", !!sessionData);
 
-        // Fetch prod entry for the resolved date + goals/habits in parallel
-        const [prodSnap, goalsSnap, goodHabitsSnap, badHabitsSnap] = await Promise.all([
+        // Fetch prod entry for the resolved date + goals/habits/todos in parallel
+        const [prodSnap, goalsSnap, goodHabitsSnap, badHabitsSnap, todoSnap] = await Promise.all([
           getDoc(doc(db, "productivity", email, "entries", resolvedDateKey)),
           getDoc(doc(db, "goals", email)),
           getDoc(doc(db, "goodhabits", email)),
           getDoc(doc(db, "badhabits", email)),
+          getDoc(doc(db, "todo", email)),
         ]);
 
         const prodData = prodSnap.exists() ? prodSnap.data() : null;
@@ -135,6 +146,7 @@ export const useHomeData = (): HomeData => {
         setGoals(goalsSnap.exists() ? (goalsSnap.data().items ?? []) : []);
         setGoodHabits(goodHabitsSnap.exists() ? (goodHabitsSnap.data().items ?? []) : []);
         setBadHabits(badHabitsSnap.exists() ? (badHabitsSnap.data().items ?? []) : []);
+        setTodos(todoSnap.exists() ? (todoSnap.data().items ?? []) : []);
       } catch (err) {
         console.error("useHomeData: failed to fetch primary data", err);
       } finally {
@@ -168,5 +180,5 @@ export const useHomeData = (): HomeData => {
     })();
   }, [user?.email]);
 
-  return { loading, today, week, goals, goodHabits, badHabits };
+  return { loading, today, week, goals, goodHabits, badHabits, todos };
 };

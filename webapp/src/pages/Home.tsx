@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { useHomeData, moodEmoji } from "@/hooks/useHomeData";
+import { useHomeData, moodEmoji, TodoItem } from "@/hooks/useHomeData";
 import {
   Sparkles,
   Activity,
@@ -13,13 +13,18 @@ import {
   BarChart3,
   ArrowRight,
   CheckCircle2,
+  Circle,
+  ListTodo,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
-import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { subDays } from "date-fns";
 import { FirstLoginModal } from "@/components/FirstLoginModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/firebase";
 
 const greetingByHour = () => {
   const h = new Date().getHours();
@@ -32,7 +37,42 @@ const Home = () => {
   const { user, isFirstLogin } = useAuth();
   const firstName = user?.displayName?.split(" ")[0] ?? "there";
   const [modalOpen, setModalOpen] = useState(isFirstLogin);
-  const { today, week, goals, goodHabits, badHabits } = useHomeData();
+  const { today, week, goals, goodHabits, badHabits, todos } = useHomeData();
+  const [localTodos, setLocalTodos] = useState<TodoItem[]>([]);
+
+  useEffect(() => {
+    setLocalTodos(todos);
+  }, [todos]);
+
+  const handleToggleTodo = async (id: string, currentStatus: string) => {
+    if (!user?.email) return;
+    const newStatus = currentStatus === "open" ? "closed" : "open";
+    // Optimistic update
+    setLocalTodos((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, status: newStatus as "open" | "closed", closedAt: newStatus === "closed" ? new Date() : null } : t,
+      ),
+    );
+    try {
+      const todoRef = doc(db, "todo", user.email);
+      const snap = await getDoc(todoRef);
+      if (!snap.exists()) return;
+      const items = snap.data().items ?? [];
+      const updated = items.map((t: TodoItem) =>
+        t.id === id
+          ? { ...t, status: newStatus, closedAt: newStatus === "closed" ? new Date() : null }
+          : t,
+      );
+      await updateDoc(todoRef, { items: updated });
+    } catch (err) {
+      console.error("handleToggleTodo failed", err);
+      // Revert on error
+      setLocalTodos(todos);
+    }
+  };
+
+  const openTodos = localTodos.filter((t) => t.status === "open");
+  const closedTodos = localTodos.filter((t) => t.status === "closed");
 
   const hasData = today.mood !== null;
   const productivityPct = today.productivityScore ? today.productivityScore * 10 : 0;
@@ -164,49 +204,88 @@ const Home = () => {
             <CardTitle className="text-base font-display">Mood This Week</CardTitle>
           </CardHeader>
           <CardContent className="pb-4">
-            <div className="h-24">
-              {week.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-muted-foreground">No mood data yet</p>
+            {(() => {
+              // Build a full 7-day skeleton (today going back 6 days)
+              const dayLabels = Array.from({ length: 7 }, (_, i) =>
+                format(subDays(new Date(), 6 - i), "EEE"),
+              );
+              const weekMap = Object.fromEntries(week.map((e) => [e.day, e.mood]));
+              const chartData = dayLabels.map((day) => ({
+                day,
+                mood: weekMap[day] ?? null,
+              }));
+              const moodLabels: Record<number, string> = { 5: "Great", 4: "Good", 3: "Okay", 2: "Low", 1: "Rough" };
+              return (
+                <div className="h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="moodGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(260, 40%, 65%)" stopOpacity={0.25} />
+                          <stop offset="100%" stopColor="hsl(260, 40%, 65%)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke="hsl(220, 10%, 90%)"
+                      />
+                      <XAxis
+                        dataKey="day"
+                        tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        domain={[1, 5]}
+                        ticks={[1, 2, 3, 4, 5]}
+                        tickFormatter={(v: number) => moodLabels[v] ?? ""}
+                        tick={{ fontSize: 9, fill: "hsl(220, 10%, 55%)" }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={46}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "hsl(0 0% 100%)",
+                          border: "none",
+                          borderRadius: "8px",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                          fontSize: "12px",
+                        }}
+                        formatter={(value: number) =>
+                          [moodLabels[value] ?? value, "Mood"]
+                        }
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="mood"
+                        stroke="hsl(260, 40%, 65%)"
+                        strokeWidth={2}
+                        fill="url(#moodGradient)"
+                        connectNulls={false}
+                        dot={(props) => {
+                          const { cx, cy, payload } = props;
+                          if (payload.mood === null) return <g key={payload.day} />;
+                          return (
+                            <circle
+                              key={payload.day}
+                              cx={cx}
+                              cy={cy}
+                              r={4}
+                              fill="hsl(260, 40%, 65%)"
+                              stroke="white"
+                              strokeWidth={2}
+                            />
+                          );
+                        }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-              ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={week}>
-                  <defs>
-                    <linearGradient id="moodGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(260, 40%, 65%)" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="hsl(260, 40%, 65%)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="day"
-                    tick={{ fontSize: 10, fill: "hsl(220, 10%, 50%)" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "hsl(0 0% 100%)",
-                      border: "none",
-                      borderRadius: "8px",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                      fontSize: "12px",
-                    }}
-                    formatter={(value: number) =>
-                      ["great", "good", "okay", "low", "rough"][5 - value] || value
-                    }
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="mood"
-                    stroke="hsl(260, 40%, 65%)"
-                    strokeWidth={2}
-                    fill="url(#moodGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-              )}
-            </div>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
@@ -371,6 +450,56 @@ const Home = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Todo List */}
+      <Card className="border-none shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <ListTodo className="h-4 w-4 text-primary" /> To-Do
+            </CardTitle>
+            {localTodos.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {openTodos.length} open · {closedTodos.length} done
+              </span>
+            )}
+          </div>
+          <CardDescription>Action items extracted from your conversations</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {localTodos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Your to-do items will appear here after chatting with Avyaa.</p>
+          ) : (
+            <ul className="space-y-2">
+              {openTodos.map((todo) => (
+                <li
+                  key={todo.id}
+                  className="flex items-start gap-3 text-sm cursor-pointer group"
+                  onClick={() => handleToggleTodo(todo.id, todo.status)}
+                >
+                  <Circle className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <span className="text-foreground/90">{todo.text}</span>
+                </li>
+              ))}
+              {closedTodos.length > 0 && openTodos.length > 0 && (
+                <li className="pt-1">
+                  <div className="border-t border-dashed border-muted-foreground/20" />
+                </li>
+              )}
+              {closedTodos.map((todo) => (
+                <li
+                  key={todo.id}
+                  className="flex items-start gap-3 text-sm cursor-pointer group"
+                  onClick={() => handleToggleTodo(todo.id, todo.status)}
+                >
+                  <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-mint" />
+                  <span className="text-muted-foreground line-through">{todo.text}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
