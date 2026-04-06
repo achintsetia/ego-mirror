@@ -1,4 +1,4 @@
-import { Mic, Target, Brain, BarChart3, Users, Settings, Home } from "lucide-react";
+import { Mic, Target, Brain, BarChart3, Users, Settings, Home, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -14,7 +14,8 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { title: "Home", url: "/", icon: Home },
@@ -33,6 +34,11 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const { user, logout } = useAuth();
+
+  const initials = user?.displayName
+    ? user.displayName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+    : "??";
 
   return (
     <Sidebar collapsible="icon">
@@ -112,16 +118,26 @@ export function AppSidebar() {
 
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
+          <Avatar className="h-8 w-8 shrink-0">
+            {user?.photoURL && <AvatarImage src={user.photoURL} alt={user.displayName || "User"} referrerPolicy="no-referrer" />}
             <AvatarFallback className="bg-lavender text-lavender-light text-xs font-bold">
-              JD
+              {initials}
             </AvatarFallback>
           </Avatar>
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold">Jane Doe</span>
-              <span className="text-xs text-muted-foreground">Day 30 streak</span>
+            <div className="flex flex-col flex-1 min-w-0">
+              <span className="text-sm font-semibold truncate">{user?.displayName || "User"}</span>
+              <span className="text-xs text-muted-foreground truncate">{user?.email}</span>
             </div>
+          )}
+          {!collapsed && (
+            <button
+              onClick={logout}
+              className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           )}
         </div>
       </SidebarFooter>

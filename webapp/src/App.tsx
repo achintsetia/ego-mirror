@@ -4,7 +4,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/Layout";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Home from "./pages/Home";
+import Landing from "./pages/Landing";
 import VoiceCompanion from "./pages/VoiceCompanion";
 import HabitTracker from "./pages/HabitTracker";
 import PersonalityEvolution from "./pages/PersonalityEvolution";
@@ -15,26 +17,51 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function AppRoutes() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
+          <p className="text-sm text-muted-foreground font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Landing />;
+  }
+
+  return (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/habits" element={<HabitTracker />} />
+        <Route path="/voice" element={<VoiceCompanion />} />
+        <Route path="/personality" element={<PersonalityEvolution />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/admin/users" element={<AdminUsers />} />
+        <Route path="/admin/models" element={<AdminModels />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Layout>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/habits" element={<HabitTracker />} />
-            <Route path="/voice" element={<VoiceCompanion />} />
-            <Route path="/personality" element={<PersonalityEvolution />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/admin/users" element={<AdminUsers />} />
-            <Route path="/admin/models" element={<AdminModels />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 
