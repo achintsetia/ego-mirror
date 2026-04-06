@@ -319,7 +319,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
       const genAI = new GoogleGenAI({ apiKey });
       const liveSession = await genAI.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: "gemini-3.1-flash-live-preview",
         config: buildLiveConfig(buildSystemInstruction(user?.displayName?.split(" ")[0] ?? "there")),
         callbacks: {
           onopen: () => {

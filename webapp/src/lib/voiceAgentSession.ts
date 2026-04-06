@@ -1,4 +1,4 @@
-import { Modality, StartSensitivity, EndSensitivity } from "@google/genai";
+import { Modality, StartSensitivity, EndSensitivity, ThinkingLevel } from "@google/genai";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -136,6 +136,9 @@ export function getWsCloseMessage(code: number): string | null {
 export function buildLiveConfig(systemInstruction: string) {
   return {
     responseModalities: [Modality.AUDIO],
+    thinkingConfig: {
+      thinkingLevel: ThinkingLevel.MINIMAL,
+    },
     speechConfig: {
       voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
     },
