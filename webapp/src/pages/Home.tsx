@@ -70,13 +70,12 @@ const Home = () => {
   const hasData = !!todayEntry?.mood;
   const productivityPct = hasData ? todayEntry.productivity * 10 : 0;
   const topStreak = [...habits].sort((a, b) => b.streak - a.streak)[0];
-  const { user, isFirstLogin, markOnboardingDone } = useAuth();
+  const { user, isFirstLogin } = useAuth();
   const firstName = user?.displayName?.split(" ")[0] ?? "there";
   const [modalOpen, setModalOpen] = useState(isFirstLogin);
 
-  const handleModalClose = async () => {
+  const handleModalClose = () => {
     setModalOpen(false);
-    await markOnboardingDone();
   };
 
   return (

@@ -6,14 +6,13 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/firebase";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isFirstLogin: boolean;
-  markOnboardingDone: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -22,7 +21,6 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isFirstLogin: false,
-  markOnboardingDone: async () => {},
   signInWithGoogle: async () => {},
   logout: async () => {},
 });
@@ -35,26 +33,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Ensure user_profiles doc exists
         const profileRef = doc(db, "user_profiles", firebaseUser.uid);
         const profileSnap = await getDoc(profileRef);
-
         if (!profileSnap.exists()) {
-          // First ever login — create profile
           await setDoc(profileRef, {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL,
-            onboardingCompleted: false,
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
           });
-          setIsFirstLogin(true);
         } else {
-          const profile = profileSnap.data();
-          setIsFirstLogin(!profile.onboardingCompleted);
-          // Update last login time
           await setDoc(profileRef, { lastLoginAt: serverTimestamp() }, { merge: true });
+        }
+
+        // Show the modal if the user has no conversations yet
+        if (firebaseUser.email) {
+          const sessionsRef = collection(db, "conversations", firebaseUser.email, "sessions");
+          const snap = await getDocs(sessionsRef);
+          setIsFirstLogin(snap.empty);
+        } else {
+          setIsFirstLogin(false);
         }
       } else {
         setIsFirstLogin(false);
@@ -64,13 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return unsubscribe;
   }, []);
-
-  const markOnboardingDone = useCallback(async () => {
-    if (!user) return;
-    const profileRef = doc(db, "user_profiles", user.uid);
-    await setDoc(profileRef, { onboardingCompleted: true }, { merge: true });
-    setIsFirstLogin(false);
-  }, [user]);
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -82,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isFirstLogin, markOnboardingDone, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, isFirstLogin, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
