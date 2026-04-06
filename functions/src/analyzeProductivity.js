@@ -1,4 +1,4 @@
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {initializeApp, getApps} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {GoogleGenerativeAI} = require("@google/generative-ai");
@@ -24,14 +24,14 @@ const buildProductivityPrompt = (transcriptText) => [
   "Return only valid JSON with no extra text.",
 ].join("\n");
 
-exports.analyzeProductivity = onDocumentCreated(
+exports.analyzeProductivity = onDocumentWritten(
     {
       document: "conversations/{email}/sessions/{dateKey}",
       region: "asia-south1",
     },
     async (event) => {
       const {email, dateKey} = event.params;
-      const sessionData = event.data?.data();
+      const sessionData = event.data?.after?.data();
 
       if (!sessionData) {
         logger.warn("analyzeProductivity: no document data", {email, dateKey});
@@ -84,24 +84,30 @@ exports.analyzeProductivity = onDocumentCreated(
       }
 
       const db = getFirestore();
-      await db
+      const entryRef = db
           .collection("productivity")
           .doc(email)
           .collection("entries")
-          .doc(dateKey)
-          .set({
-            date: sessionData.date ?? new Date(),
-            dateKey,
-            productiveHours,
-            productivityScore,
-            tasksCompleted,
-            focusAreas,
-            blockers,
-            insights,
-            mood: sessionData.mood ?? null,
-            createdAt: new Date(),
-          });
+          .doc(dateKey);
 
-      logger.info("Productivity entry saved", {email, dateKey, productiveHours, productivityScore});
+      const existingEntry = await entryRef.get();
+      const isUpdate = existingEntry.exists;
+
+      await entryRef.set({
+        date: sessionData.date ?? new Date(),
+        dateKey,
+        productiveHours,
+        productivityScore,
+        tasksCompleted,
+        focusAreas,
+        blockers,
+        insights,
+        mood: sessionData.mood ?? null,
+        sessionCount: sessionData.sessionCount ?? 1,
+        createdAt: isUpdate ? existingEntry.data().createdAt : new Date(),
+        updatedAt: new Date(),
+      });
+
+      logger.info("Productivity entry saved", {email, dateKey, productiveHours, productivityScore, isUpdate});
     },
 );

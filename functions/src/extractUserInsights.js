@@ -1,34 +1,45 @@
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {initializeApp, getApps} = require("firebase-admin/app");
-const {getFirestore, FieldValue} = require("firebase-admin/firestore");
+const {getFirestore} = require("firebase-admin/firestore");
 const {GoogleGenerativeAI} = require("@google/generative-ai");
 const logger = require("firebase-functions/logger");
 
 if (!getApps().length) initializeApp();
 
-const buildInsightsPrompt = (transcriptText) => [
-  "You are analyzing a daily reflection conversation between a user and their AI companion Avyaa.",
+const buildInsightsPrompt = (transcriptText, currentGoals, currentGoodHabits, currentBadHabits) => [
+  "You are maintaining a user's master lists of goals, good habits, and bad habits based on their daily conversations with their AI companion Avyaa.",
   "",
-  "Conversation:",
+  "Current master lists:",
+  `goals: ${JSON.stringify(currentGoals)}`,
+  `goodHabits: ${JSON.stringify(currentGoodHabits)}`,
+  `badHabits: ${JSON.stringify(currentBadHabits)}`,
+  "",
+  "New conversation:",
   transcriptText,
   "",
-  "Extract the following from what the user shared and return a JSON object with exactly these fields:",
-  "- \"goals\": An array of strings — any goals, resolutions, or ambitions the user mentioned (e.g. 'lose 10kg by December', 'read 12 books this year'). Empty array if none mentioned.",
-  "- \"goodHabits\": An array of strings — positive habits the user currently has, is building, or wants to continue (e.g. 'morning run', 'reading before bed'). Empty array if none mentioned.",
-  "- \"badHabits\": An array of strings — negative habits the user acknowledged, wants to reduce, or is struggling with (e.g. 'too much screen time', 'skipping breakfast'). Empty array if none mentioned.",
+  "Update the master lists based on what the user shared. Rules:",
+  "- Add any new goals, good habits, or bad habits the user mentioned.",
+  "- Remove or replace items that the user indicated they no longer have or have resolved.",
+  "- Merge duplicates or near-duplicates into a single canonical item.",
+  "- Keep items from the current lists that were not contradicted.",
+  "- Only include items the user has actually expressed — do not infer or invent.",
   "",
-  "Only include items that the user clearly mentioned. Do not infer or invent items.",
+  "Return a JSON object with exactly these fields:",
+  "- \"goals\": Updated array of the user's goals and resolutions.",
+  "- \"goodHabits\": Updated array of the user's positive habits.",
+  "- \"badHabits\": Updated array of the user's negative habits they want to address.",
+  "",
   "Return only valid JSON with no extra text.",
 ].join("\n");
 
-exports.extractUserInsights = onDocumentCreated(
+exports.extractUserInsights = onDocumentWritten(
     {
       document: "conversations/{email}/sessions/{dateKey}",
       region: "asia-south1",
     },
     async (event) => {
       const {email, dateKey} = event.params;
-      const sessionData = event.data?.data();
+      const sessionData = event.data?.after?.data();
 
       if (!sessionData) {
         logger.warn("extractUserInsights: no document data", {email, dateKey});
@@ -47,13 +58,27 @@ exports.extractUserInsights = onDocumentCreated(
         return;
       }
 
+      const db = getFirestore();
+      const now = new Date();
+
+      // Read current master lists
+      const [goalsSnap, goodHabitsSnap, badHabitsSnap] = await Promise.all([
+        db.collection("goals").doc(email).get(),
+        db.collection("goodhabits").doc(email).get(),
+        db.collection("badhabits").doc(email).get(),
+      ]);
+
+      const currentGoals = goalsSnap.exists ? (goalsSnap.data().items ?? []) : [];
+      const currentGoodHabits = goodHabitsSnap.exists ? (goodHabitsSnap.data().items ?? []) : [];
+      const currentBadHabits = badHabitsSnap.exists ? (badHabitsSnap.data().items ?? []) : [];
+
       const transcriptText = transcript
           .map((m) => `${m.role === "model" ? "Avyaa" : "User"}: ${m.text}`)
           .join("\n");
 
-      let goals = [];
-      let goodHabits = [];
-      let badHabits = [];
+      let goals = currentGoals;
+      let goodHabits = currentGoodHabits;
+      let badHabits = currentBadHabits;
 
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -61,55 +86,45 @@ exports.extractUserInsights = onDocumentCreated(
           model: "gemini-2.5-flash",
           generationConfig: {responseMimeType: "application/json"},
         });
-        const result = await model.generateContent(buildInsightsPrompt(transcriptText));
+        const result = await model.generateContent(
+            buildInsightsPrompt(transcriptText, currentGoals, currentGoodHabits, currentBadHabits),
+        );
         const raw = result.response.text();
         if (raw) {
           const parsed = JSON.parse(raw);
-          goals = Array.isArray(parsed.goals) ? parsed.goals : [];
-          goodHabits = Array.isArray(parsed.goodHabits) ? parsed.goodHabits : [];
-          badHabits = Array.isArray(parsed.badHabits) ? parsed.badHabits : [];
+          goals = Array.isArray(parsed.goals) ? parsed.goals : currentGoals;
+          goodHabits = Array.isArray(parsed.goodHabits) ? parsed.goodHabits : currentGoodHabits;
+          badHabits = Array.isArray(parsed.badHabits) ? parsed.badHabits : currentBadHabits;
         }
       } catch (err) {
         logger.error("extractUserInsights: Gemini extraction failed", {err: err.message, email, dateKey});
         return;
       }
 
-      const db = getFirestore();
-      const now = new Date();
-
-      // Merge arrays into the user's document using arrayUnion so entries accumulate over time
+      // Write updated master lists as simple flat documents
       const batch = db.batch();
 
-      if (goals.length > 0) {
-        const goalsRef = db.collection("goals").doc(email);
-        batch.set(goalsRef, {
-          goals: FieldValue.arrayUnion(...goals),
-          lastUpdated: now,
-          lastSessionDate: dateKey,
-        }, {merge: true});
-      }
+      batch.set(db.collection("goals").doc(email), {
+        items: goals,
+        lastUpdated: now,
+        lastSessionDate: dateKey,
+      });
 
-      if (goodHabits.length > 0) {
-        const goodHabitsRef = db.collection("goodhabits").doc(email);
-        batch.set(goodHabitsRef, {
-          habits: FieldValue.arrayUnion(...goodHabits),
-          lastUpdated: now,
-          lastSessionDate: dateKey,
-        }, {merge: true});
-      }
+      batch.set(db.collection("goodhabits").doc(email), {
+        items: goodHabits,
+        lastUpdated: now,
+        lastSessionDate: dateKey,
+      });
 
-      if (badHabits.length > 0) {
-        const badHabitsRef = db.collection("badhabits").doc(email);
-        batch.set(badHabitsRef, {
-          habits: FieldValue.arrayUnion(...badHabits),
-          lastUpdated: now,
-          lastSessionDate: dateKey,
-        }, {merge: true});
-      }
+      batch.set(db.collection("badhabits").doc(email), {
+        items: badHabits,
+        lastUpdated: now,
+        lastSessionDate: dateKey,
+      });
 
       await batch.commit();
 
-      logger.info("User insights extracted and saved", {
+      logger.info("User insights updated", {
         email,
         dateKey,
         goals: goals.length,

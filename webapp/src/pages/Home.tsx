@@ -1,30 +1,18 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import {
-  todayEntry,
-  moodEmoji,
-  habits,
-  habitCompletionRate,
-  personalityTraits,
-  dailyEntries,
-  type MoodType,
-} from "@/data/mockData";
+import { useHomeData, moodEmoji } from "@/hooks/useHomeData";
 import {
   Sparkles,
   Activity,
-  Zap,
+  Clock,
   Lightbulb,
   Target,
   Mic,
   Brain,
   BarChart3,
   ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   CheckCircle2,
-  Flame,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -33,12 +21,6 @@ import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { FirstLoginModal } from "@/components/FirstLoginModal";
 import { useAuth } from "@/contexts/AuthContext";
 
-const energyColor = {
-  high: "bg-mint text-mint-light",
-  medium: "bg-sky text-sky-light",
-  low: "bg-peach text-peach-light",
-};
-
 const greetingByHour = () => {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -46,33 +28,14 @@ const greetingByHour = () => {
   return "Good evening";
 };
 
-const moodToValue: Record<MoodType, number> = {
-  great: 5,
-  good: 4,
-  okay: 3,
-  low: 2,
-  rough: 1,
-};
-
-const moodChartData = dailyEntries.slice(-7).map((e) => ({
-  day: format(new Date(e.date), "EEE"),
-  mood: moodToValue[e.mood],
-  productivity: e.productivity,
-}));
-
-const TrendIcon = ({ trend }: { trend: string }) => {
-  if (trend === "up") return <TrendingUp className="h-3.5 w-3.5 text-mint" />;
-  if (trend === "down") return <TrendingDown className="h-3.5 w-3.5 text-peach" />;
-  return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
-};
-
 const Home = () => {
-  const hasData = !!todayEntry?.mood;
-  const productivityPct = hasData ? todayEntry.productivity * 10 : 0;
-  const topStreak = [...habits].sort((a, b) => b.streak - a.streak)[0];
   const { user, isFirstLogin } = useAuth();
   const firstName = user?.displayName?.split(" ")[0] ?? "there";
   const [modalOpen, setModalOpen] = useState(isFirstLogin);
+  const { today, week, goals, goodHabits, badHabits } = useHomeData();
+
+  const hasData = today.mood !== null;
+  const productivityPct = today.productivityScore ? today.productivityScore * 10 : 0;
 
   const handleModalClose = () => {
     setModalOpen(false);
@@ -93,8 +56,8 @@ const Home = () => {
             {greetingByHour()}, {firstName} <span className="inline-block animate-pulse-soft">✨</span>
           </h1>
           <p className="text-muted-foreground mt-2 max-w-lg">
-            {todayEntry?.mood
-              ? <>Last time you felt <span className="font-medium capitalize">{todayEntry.mood}</span> — here's a snapshot of how you're showing up and growing.</>
+          {today.mood
+              ? <>Last time you felt <span className="font-medium capitalize">{today.mood}</span> — here's a snapshot of how you're showing up and growing.</>
               : "Start your first conversation with Avyaa to begin tracking your journey."}
           </p>
         </div>
@@ -109,11 +72,11 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {hasData ? (
+          {hasData ? (
               <div className="flex items-center gap-3">
-                <span className="text-5xl drop-shadow-sm">{moodEmoji[todayEntry.mood]}</span>
+                <span className="text-5xl drop-shadow-sm">{moodEmoji[today.mood!]}</span>
                 <div>
-                  <p className="text-xl font-display font-bold capitalize">{todayEntry.mood}</p>
+                  <p className="text-xl font-display font-bold capitalize">{today.mood}</p>
                   <p className="text-xs text-muted-foreground">Overall feeling last session</p>
                 </div>
               </div>
@@ -130,10 +93,10 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {hasData ? (
+            {today.productivityScore !== null ? (
               <div className="space-y-2">
                 <p className="text-3xl font-display font-bold">
-                  {todayEntry.productivity}
+                  {today.productivityScore}
                   <span className="text-lg text-muted-foreground">/10</span>
                 </p>
                 <Progress value={productivityPct} className="h-2" />
@@ -147,18 +110,17 @@ const Home = () => {
         <Card className="border-none shadow-sm bg-card hover:shadow-md transition-shadow">
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
-              <Zap className="h-4 w-4 text-peach" /> Energy
+              <Clock className="h-4 w-4 text-peach" /> Hours Focused
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {hasData ? (
+            {today.productiveHours !== null ? (
               <>
-                <Badge
-                  className={`${energyColor[todayEntry.energy]} text-sm px-3 py-1 capitalize border-none`}
-                >
-                  {todayEntry.energy}
-                </Badge>
-                <p className="text-xs text-muted-foreground mt-2">Energy level last session</p>
+                <p className="text-3xl font-display font-bold">
+                  {today.productiveHours}
+                  <span className="text-lg text-muted-foreground"> hrs</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Productive time today</p>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">No data yet</p>
@@ -167,23 +129,30 @@ const Home = () => {
         </Card>
       </div>
 
-      {/* Two Column: Truth + Mood Trend */}
+      {/* Two Column: Key Moments + Mood Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Truth Reflection */}
+        {/* Key Moments */}
         <Card className="border-none shadow-sm bg-lavender-light lg:col-span-3">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-display flex items-center gap-2">
-              <span className="text-lavender">💡</span> Today's Truth
+              <span className="text-lavender">✨</span> Key Moments
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {hasData ? (
-              <p className="text-foreground/80 leading-relaxed italic text-sm">
-                "{todayEntry.reflection}"
-              </p>
+            {today.keyMoments.length > 0 ? (
+              <ul className="space-y-2">
+                {today.keyMoments.map((moment, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-foreground/80">
+                    <span className="mt-0.5 h-4 w-4 rounded-full bg-lavender/20 flex items-center justify-center text-[10px] font-bold text-lavender shrink-0">
+                      {i + 1}
+                    </span>
+                    {moment}
+                  </li>
+                ))}
+              </ul>
             ) : (
               <p className="text-sm text-muted-foreground italic">
-                Your reflection will appear here after your first conversation with Avyaa.
+                Key moments from your conversations will appear here.
               </p>
             )}
           </CardContent>
@@ -196,13 +165,13 @@ const Home = () => {
           </CardHeader>
           <CardContent className="pb-4">
             <div className="h-24">
-              {moodChartData.length === 0 ? (
+              {week.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
                   <p className="text-xs text-muted-foreground">No mood data yet</p>
                 </div>
               ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={moodChartData}>
+                <AreaChart data={week}>
                   <defs>
                     <linearGradient id="moodGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="hsl(260, 40%, 65%)" stopOpacity={0.3} />
@@ -249,125 +218,52 @@ const Home = () => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-display flex items-center gap-2">
-                <Target className="h-4 w-4 text-primary" /> Habits Today
+                <Target className="h-4 w-4 text-primary" /> Good Habits
               </CardTitle>
-              <Link
-                to="/habits"
-                className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
-              >
-                View all <ArrowRight className="h-3 w-3" />
-              </Link>
             </div>
             <CardDescription>
-              {habits.filter((h) => h.completedToday).length} of {habits.length} completed
+              {goodHabits.length > 0 ? `${goodHabits.length} habit${goodHabits.length === 1 ? "" : "s"} you're building` : "Track your positive habits"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* Completion ring + habits list */}
-            <div className="flex items-start gap-5">
-              <div className="relative h-20 w-20 shrink-0">
-                <svg className="h-20 w-20 -rotate-90" viewBox="0 0 36 36">
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="hsl(var(--border))"
-                    strokeWidth="3"
-                  />
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="3"
-                    strokeDasharray={`${habitCompletionRate}, 100`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-lg font-bold font-display">
-                  {habitCompletionRate}%
-                </span>
-              </div>
-              <ul className="flex-1 space-y-2">
-                {habits.map((habit) => (
-                  <li key={habit.id} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <span>{habit.icon}</span>
-                      <span className={habit.completedToday ? "" : "text-muted-foreground"}>
-                        {habit.name}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-2">
-                      {habit.streak > 0 && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                          <Flame className="h-3 w-3 text-peach" />
-                          {habit.streak}
-                        </span>
-                      )}
-                      {habit.completedToday ? (
-                        <CheckCircle2 className="h-4 w-4 text-mint" />
-                      ) : (
-                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
-                      )}
-                    </span>
+            {goodHabits.length > 0 ? (
+              <ul className="space-y-2">
+                {goodHabits.map((habit, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-mint shrink-0" />
+                    <span>{habit}</span>
                   </li>
                 ))}
               </ul>
-            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Your good habits will appear here after chatting with Avyaa.</p>
+            )}
           </CardContent>
         </Card>
 
-        {/* Personality Snapshot */}
+        {/* Goals */}
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-display flex items-center gap-2">
-                <Brain className="h-4 w-4 text-lavender" /> Personality Evolution
+                <Brain className="h-4 w-4 text-lavender" /> Your Goals
               </CardTitle>
-              <Link
-                to="/personality"
-                className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
-              >
-                Deep dive <ArrowRight className="h-3 w-3" />
-              </Link>
             </div>
-            <CardDescription>How your traits are shifting</CardDescription>
+            <CardDescription>What you're working towards</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {personalityTraits.map((trait) => (
-                <div key={trait.name} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{trait.name}</span>
-                    <span className="flex items-center gap-1.5 text-xs">
-                      <TrendIcon trend={trait.trend} />
-                      <span
-                        className={
-                          trait.change > 0
-                            ? "text-mint"
-                            : trait.change < 0
-                              ? "text-peach"
-                              : "text-muted-foreground"
-                        }
-                      >
-                        {trait.change > 0 ? "+" : ""}
-                        {trait.change}%
-                      </span>
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${trait.currentScore}%`,
-                        backgroundColor: trait.color,
-                      }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground text-right">
-                    {trait.currentScore}/100
-                  </p>
-                </div>
-              ))}
-            </div>
+            {goals.length > 0 ? (
+              <ul className="space-y-2">
+                {goals.map((goal, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <Target className="h-4 w-4 text-lavender shrink-0 mt-0.5" />
+                    <span>{goal}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Your goals will appear here after chatting with Avyaa.</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -408,31 +304,19 @@ const Home = () => {
           </Link>
         </div>
 
-        {/* AI Suggestions */}
+        {/* AI Insights */}
         <Card className="border-none shadow-sm bg-mint-light lg:col-span-3">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-display flex items-center gap-2">
-              <Lightbulb className="h-5 w-5 text-mint" /> AI Suggestions
+              <Lightbulb className="h-5 w-5 text-mint" /> AI Insight
             </CardTitle>
-            <CardDescription>Personalized nudges based on your patterns</CardDescription>
+            <CardDescription>Based on your last conversation</CardDescription>
           </CardHeader>
           <CardContent>
-            {hasData ? (
-              <ul className="space-y-3">
-                {todayEntry.suggestions.map((suggestion, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-3 text-sm text-foreground/80"
-                  >
-                    <span className="mt-0.5 h-5 w-5 rounded-full bg-mint/20 flex items-center justify-center text-xs font-bold text-mint shrink-0">
-                      {i + 1}
-                    </span>
-                    {suggestion}
-                  </li>
-                ))}
-              </ul>
+            {today.insights ? (
+              <p className="text-sm text-foreground/80 leading-relaxed">{today.insights}</p>
             ) : (
-              <p className="text-sm text-muted-foreground">Personalized suggestions will appear after your first conversation with Avyaa.</p>
+              <p className="text-sm text-muted-foreground">Personalized insights will appear after your first conversation with Avyaa.</p>
             )}
           </CardContent>
         </Card>
@@ -442,38 +326,48 @@ const Home = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="border-none shadow-sm lg:col-span-2">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-display">Today's Activities</CardTitle>
+            <CardTitle className="text-base font-display">Today's Focus Areas</CardTitle>
           </CardHeader>
           <CardContent>
-            {hasData && todayEntry.activities?.length > 0 ? (
+            {hasData && today.focusAreas.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {todayEntry.activities.map((activity, i) => (
+                {today.focusAreas.map((area, i) => (
                   <Badge
                     key={i}
                     variant="secondary"
                     className="px-3 py-1.5 text-sm font-normal bg-muted/60"
                   >
-                    {activity}
+                    {area}
                   </Badge>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Your activities will appear here after your first conversation.</p>
+              <p className="text-sm text-muted-foreground">Your focus areas will appear here after your first conversation.</p>
             )}
           </CardContent>
         </Card>
 
-        {/* Best Streak */}
+        {/* Bad Habits */}
         <Card className="border-none shadow-sm bg-gradient-to-br from-peach-light to-peach-light/50">
-          <CardContent className="p-6 flex flex-col items-center justify-center text-center h-full">
-            <div className="text-4xl mb-2">{topStreak.icon}</div>
-            <p className="font-display font-bold text-2xl flex items-center gap-1">
-              <Flame className="h-5 w-5 text-peach" />
-              {topStreak.streak} days
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {topStreak.name} streak — keep going!
-            </p>
+          <CardContent className="p-6 h-full">
+            {badHabits.length > 0 ? (
+              <>
+                <p className="text-sm font-display font-bold mb-3">Working on quitting</p>
+                <ul className="space-y-1.5">
+                  {badHabits.slice(0, 3).map((habit, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm text-foreground/80">
+                      <ArrowRight className="h-3.5 w-3.5 text-peach shrink-0" />
+                      <span>{habit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center h-full gap-2">
+                <p className="text-2xl">🌿</p>
+                <p className="text-sm text-muted-foreground">Bad habits you want to address will show up here.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
