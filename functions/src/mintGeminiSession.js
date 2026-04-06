@@ -12,7 +12,7 @@ exports.mintGeminiSession = onCall(
       if (!request.auth) {
         throw new HttpsError(
             "unauthenticated",
-            "Must be signed in to use Srishti.",
+            "Must be signed in to use Avyaa.",
         );
       }
 

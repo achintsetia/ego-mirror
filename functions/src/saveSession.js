@@ -7,13 +7,13 @@ const logger = require("firebase-functions/logger");
 if (!getApps().length) initializeApp();
 
 const buildSummaryPrompt = (text) => [
-  "You are analyzing a daily reflection conversation between a user and their AI companion Srishti.",
+  "You are analyzing a daily reflection conversation between a user and their AI companion Avyaa.",
   "",
   "Conversation:",
   text,
   "",
   "Return a JSON object with exactly these fields:",
-  "- \"summary\": A detailed paragraph covering what Srishti asked and what the user shared.",
+  "- \"summary\": A detailed paragraph covering what Avyaa asked and what the user shared.",
   "- \"mood\": The user overall mood — one of: great, good, okay, low, rough.",
   "- \"topics\": Array of up to 5 key topics discussed.",
   "- \"keyMoments\": Array of up to 5 notable things the user shared or insights that emerged.",
@@ -42,7 +42,7 @@ exports.saveSession = onCall(
       }
 
       const transcriptText = transcript
-          .map((m) => `${m.role === "model" ? "Srishti" : "User"}: ${m.text}`)
+          .map((m) => `${m.role === "model" ? "Avyaa" : "User"}: ${m.text}`)
           .join("\n");
 
       let summary = null;
@@ -74,7 +74,7 @@ exports.saveSession = onCall(
         String(now.getDate()).padStart(2, "0"),
         String(now.getMonth() + 1).padStart(2, "0"),
         now.getFullYear(),
-      ].join("/");
+      ].join("-");
 
       const db = getFirestore();
       await db

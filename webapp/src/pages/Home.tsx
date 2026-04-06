@@ -69,7 +69,8 @@ const TrendIcon = ({ trend }: { trend: string }) => {
 const Home = () => {
   const productivityPct = todayEntry.productivity * 10;
   const topStreak = [...habits].sort((a, b) => b.streak - a.streak)[0];
-  const { isFirstLogin, markOnboardingDone } = useAuth();
+  const { user, isFirstLogin, markOnboardingDone } = useAuth();
+  const firstName = user?.displayName?.split(" ")[0] ?? "there";
   const [modalOpen, setModalOpen] = useState(isFirstLogin);
 
   const handleModalClose = async () => {
@@ -89,10 +90,10 @@ const Home = () => {
             {format(new Date(), "EEEE, MMMM d")}
           </p>
           <h1 className="text-3xl md:text-4xl font-display font-bold text-foreground mt-1">
-            {greetingByHour()}, Jane <span className="inline-block animate-pulse-soft">✨</span>
+            {greetingByHour()}, {firstName} <span className="inline-block animate-pulse-soft">✨</span>
           </h1>
           <p className="text-muted-foreground mt-2 max-w-lg">
-            Here's your mirror for today — a snapshot of how you're showing up and growing.
+            Last time you felt <span className="font-medium capitalize">{todayEntry.mood}</span> — here's a snapshot of how you're showing up and growing.
           </p>
         </div>
       </div>

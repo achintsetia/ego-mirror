@@ -5,7 +5,7 @@ import { Mic, PhoneOff, X } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity } from "@google/genai";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,11 +25,20 @@ interface TranscriptEntry {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SYSTEM_INSTRUCTION =
-  `You are Srishti, a warm, empathetic daily reflection companion built into the HWYD ("How Was Your Day") app. ` +
-  `Your opening line must be exactly: "Hello, I am Srishti, how was your day?" ` +
+const buildSystemInstruction = (userName: string) =>
+  `You are Avyaa, a warm, empathetic daily reflection companion built into the HWYD ("How Was Your Day") app. ` +
+  `The user's name is ${userName}. Address them by name naturally throughout the conversation. ` +
+  `Your opening line must be exactly: "Hello ${userName}! I am Avyaa, your personal reflection companion. You can share anything with me — updates about your productivity, your good and bad habits, your goals for this year, habits you want to keep going, or habits you'd like to quit. Let's start — how was your day?" ` +
   `Keep all responses short and conversational — this is a real-time voice interaction. ` +
-  `Ask thoughtful follow-up questions to help the user reflect on their day. ` +
+  `After the user responds to the opening, gently guide the conversation through the following topics one at a time, in a natural flowing way: ` +
+  `(1) their productivity and what they accomplished, ` +
+  `(2) good habits they currently have or are building, ` +
+  `(3) bad habits they are aware of and want to address, ` +
+  `(4) their main goal or resolution for this year, ` +
+  `(5) habits they would like to continue and strengthen, ` +
+  `(6) habits they would like to quit or reduce. ` +
+  `Do not ask all questions at once. Transition naturally between topics based on what the user shares. ` +
+  `Ask thoughtful follow-up questions to help the user reflect deeply. ` +
   `Be supportive, curious, and non-judgmental.`;
 
 // AudioWorklet processor code — captures mic PCM at 16 kHz and posts it back
@@ -154,24 +163,24 @@ export function FirstLoginModal({ open, onClose }: Props) {
   const handleLiveMessage = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (msg: any) => {
-      console.log("[Srishti] Message received:", JSON.stringify(msg).slice(0, 300));
+      console.log("[Avyaa] Message received:", JSON.stringify(msg).slice(0, 300));
 
       // Setup acknowledgement — start mic capture and trigger greeting
       if (msg.setupComplete !== undefined) {
-        console.log("[Srishti] Setup complete — triggering greeting and starting mic.");
+        console.log("[Avyaa] Setup complete — triggering greeting and starting mic.");
         setSessionState("connected");
 
-        // Trigger Srishti's opening greeting via realtime text input
+        // Trigger Avyaa's opening greeting via realtime text input
         sessionRef.current?.sendRealtimeInput({
           text: "Hi",
         });
-        console.log("[Srishti] Greeting turn sent.");
+        console.log("[Avyaa] Greeting turn sent.");
 
         // Start streaming mic audio
         const captureCtx = captureCtxRef.current;
         const stream = streamRef.current;
         if (!captureCtx || !stream) {
-          console.warn("[Srishti] No captureCtx or stream available.");
+          console.warn("[Avyaa] No captureCtx or stream available.");
           return;
         }
 
@@ -191,7 +200,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
             });
             micChunkCount++;
             if (micChunkCount % 100 === 0) {
-              console.log("[Srishti] Mic chunks sent:", micChunkCount);
+              console.log("[Avyaa] Mic chunks sent:", micChunkCount);
             }
           } catch {
             // WebSocket already closed — stop sending
@@ -203,7 +212,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
         worklet.connect(silencer);
         silencer.connect(captureCtx.destination);
         workletRef.current = worklet;
-        console.log("[Srishti] Mic streaming started.");
+        console.log("[Avyaa] Mic streaming started.");
         return;
       }
 
@@ -212,7 +221,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
       // Accumulate user speech from Gemini's input transcription
       if (sc.inputTranscription?.text) {
-        console.log("[Srishti] Input transcription chunk:", sc.inputTranscription.text);
+        console.log("[Avyaa] Input transcription chunk:", sc.inputTranscription.text);
         userTextBufRef.current += sc.inputTranscription.text;
       }
 
@@ -220,7 +229,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
       if (sc.modelTurn?.parts && userTextBufRef.current.trim()) {
         const userText = userTextBufRef.current.trim();
         userTextBufRef.current = "";
-        console.log("[Srishti] User turn flushed:", userText);
+        console.log("[Avyaa] User turn flushed:", userText);
         transcriptRef.current.push({ role: "user", text: userText, timestamp: new Date().toISOString() });
         setMessages((prev) => [...prev, { role: "user", text: userText }]);
       }
@@ -228,14 +237,14 @@ export function FirstLoginModal({ open, onClose }: Props) {
       if (sc.modelTurn?.parts) {
         for (const part of sc.modelTurn.parts) {
           if (part.text) {
-            console.log("[Srishti] Model text part:", part.text);
+            console.log("[Avyaa] Model text part:", part.text);
             modelTextBufRef.current += part.text;
           }
           if (part.inlineData?.data) {
             const mimeType = part.inlineData.mimeType ?? "audio/pcm;rate=24000";
             const rateMatch = mimeType.match(/rate=(\d+)/);
             const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
-            console.log("[Srishti] Audio chunk received, sampleRate:", sampleRate, "bytes:", part.inlineData.data.length);
+            console.log("[Avyaa] Audio chunk received, sampleRate:", sampleRate, "bytes:", part.inlineData.data.length);
             scheduleAudioChunk(base64ToInt16(part.inlineData.data), sampleRate);
           }
         }
@@ -243,7 +252,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
       // Accumulate output transcription text if provided separately
       if (sc.outputTranscription?.text) {
-        console.log("[Srishti] Output transcription chunk:", sc.outputTranscription.text);
+        console.log("[Avyaa] Output transcription chunk:", sc.outputTranscription.text);
         modelTextBufRef.current += sc.outputTranscription.text;
       }
 
@@ -251,7 +260,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
       if (sc.turnComplete && modelTextBufRef.current.trim()) {
         const text = modelTextBufRef.current.trim();
         modelTextBufRef.current = "";
-        console.log("[Srishti] Model turn complete:", text);
+        console.log("[Avyaa] Model turn complete:", text);
         transcriptRef.current.push({ role: "model", text, timestamp: new Date().toISOString() });
         setMessages((prev) => [...prev, { role: "model", text }]);
       }
@@ -265,20 +274,20 @@ export function FirstLoginModal({ open, onClose }: Props) {
     try {
       setSessionState("connecting");
       setErrorMsg("");
-      console.log("[Srishti] Starting session...");
+      console.log("[Avyaa] Starting session...");
 
       // 1. Get API key from Cloud Function
-      console.log("[Srishti] Fetching API key from mintGeminiSession...");
+      console.log("[Avyaa] Fetching API key from mintGeminiSession...");
       const mintFn = httpsCallable<Record<string, never>, { apiKey: string }>(
         functions,
         "mintGeminiSession"
       );
       const { data } = await mintFn({});
       const apiKey = data.apiKey;
-      console.log("[Srishti] API key received:", apiKey ? `${apiKey.slice(0, 6)}...` : "EMPTY");
+      console.log("[Avyaa] API key received:", apiKey ? `${apiKey.slice(0, 6)}...` : "EMPTY");
 
       // 2. Request mic access
-      console.log("[Srishti] Requesting mic access...");
+      console.log("[Avyaa] Requesting mic access...");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000,
@@ -288,28 +297,28 @@ export function FirstLoginModal({ open, onClose }: Props) {
         },
       });
       streamRef.current = stream;
-      console.log("[Srishti] Mic access granted, tracks:", stream.getAudioTracks().map(t => t.label));
+      console.log("[Avyaa] Mic access granted, tracks:", stream.getAudioTracks().map(t => t.label));
 
       // 3. Capture AudioContext at 16 kHz
       const captureCtx = new AudioContext({ sampleRate: 16000 });
       captureCtxRef.current = captureCtx;
-      console.log("[Srishti] Capture AudioContext created, sampleRate:", captureCtx.sampleRate);
+      console.log("[Avyaa] Capture AudioContext created, sampleRate:", captureCtx.sampleRate);
 
       // 4. Playback AudioContext at 24 kHz
       const playbackCtx = new AudioContext({ sampleRate: 24000 });
       playbackCtxRef.current = playbackCtx;
-      console.log("[Srishti] Playback AudioContext created, sampleRate:", playbackCtx.sampleRate);
+      console.log("[Avyaa] Playback AudioContext created, sampleRate:", playbackCtx.sampleRate);
 
       // 5. Load AudioWorklet processor for mic capture
-      console.log("[Srishti] Loading AudioWorklet processor...");
+      console.log("[Avyaa] Loading AudioWorklet processor...");
       const blob = new Blob([PCM_PROCESSOR_CODE], { type: "application/javascript" });
       const workletUrl = URL.createObjectURL(blob);
       await captureCtx.audioWorklet.addModule(workletUrl);
       URL.revokeObjectURL(workletUrl);
-      console.log("[Srishti] AudioWorklet loaded.");
+      console.log("[Avyaa] AudioWorklet loaded.");
 
       // 6. Connect to Gemini Live API via @google/genai SDK
-      console.log("[Srishti] Connecting to Gemini Live API...");
+      console.log("[Avyaa] Connecting to Gemini Live API...");
       const genAI = new GoogleGenAI({ apiKey });
       const liveSession = await genAI.live.connect({
         model: "gemini-3.1-flash-live-preview",
@@ -322,24 +331,33 @@ export function FirstLoginModal({ open, onClose }: Props) {
           },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+              endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+              prefixPaddingMs: 200,
+              silenceDurationMs: 2500,
+            },
+          },
           systemInstruction: {
-            parts: [{ text: SYSTEM_INSTRUCTION }],
+            parts: [{ text: buildSystemInstruction(user?.displayName?.split(" ")[0] ?? "there") }],
           },
         },
         callbacks: {
           onopen: () => {
-            console.log("[Srishti] WebSocket opened.");
+            console.log("[Avyaa] WebSocket opened.");
           },
           onmessage: handleLiveMessage,
           onerror: (err: unknown) => {
-            console.error("[Srishti] WebSocket error:", err);
+            console.error("[Avyaa] WebSocket error:", err);
             sessionRef.current = null;
             setSessionState("error");
-            setErrorMsg("Srishti couldn't connect right now. Please check your internet and try again.");
+            setErrorMsg("Avyaa couldn't connect right now. Please check your internet and try again.");
             cleanup();
           },
           onclose: (evt: CloseEvent) => {
-            console.warn("[Srishti] WebSocket closed:", evt.code, evt.reason);
+            console.warn("[Avyaa] WebSocket closed:", evt.code, evt.reason);
             sessionRef.current = null;
             if (evt.code !== 1000) {
               setSessionState("error");
@@ -347,7 +365,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
               if (evt.code === 1006) {
                 friendlyMsg = "The connection dropped. Please check your internet and try again.";
               } else if (evt.code === 1008 || evt.code === 1003) {
-                friendlyMsg = "Srishti isn't available right now. Please try again in a moment.";
+                friendlyMsg = "Avyaa isn't available right now. Please try again in a moment.";
               } else if (evt.code === 1011) {
                 friendlyMsg = "Something went wrong on our end. Please try again shortly.";
               }
@@ -358,9 +376,9 @@ export function FirstLoginModal({ open, onClose }: Props) {
         },
       });
       sessionRef.current = liveSession;
-      console.log("[Srishti] Live session connected:", liveSession);
+      console.log("[Avyaa] Live session connected:", liveSession);
     } catch (err: unknown) {
-      console.error("[Srishti] Session error:", err);
+      console.error("[Avyaa] Session error:", err);
       setSessionState("error");
       const msg =
         err instanceof Error
@@ -413,7 +431,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
           <div className="flex items-center justify-between px-6 pt-6 pb-4">
             <div>
               <h2 className="text-xl font-display font-bold text-foreground">
-                Meet Srishti ✨
+                Meet Avyaa ✨
               </h2>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {isIdle && "Your daily reflection companion"}
@@ -484,7 +502,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
               {isIdle && (
                 <p className="text-sm text-muted-foreground text-center px-8">
-                  Tap the mic to start your first conversation with Srishti
+                  Tap the mic to start your first conversation with Avyaa
                 </p>
               )}
 
@@ -531,7 +549,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
                 {messages.length === 0 && (
                   <div className="flex justify-center py-6">
                     <p className="text-xs text-muted-foreground animate-pulse">
-                      Srishti is speaking…
+                      Avyaa is speaking…
                     </p>
                   </div>
                 )}
@@ -569,7 +587,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
                     <Mic className="h-6 w-6" />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Speak freely — Srishti is listening</p>
+                <p className="text-xs text-muted-foreground">Speak freely — Avyaa is listening</p>
                 <Button
                   variant="outline"
                   size="sm"
