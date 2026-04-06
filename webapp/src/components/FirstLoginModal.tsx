@@ -5,7 +5,12 @@ import { Mic, PhoneOff, X } from "lucide-react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import {
+  type TranscriptEntry, AGENT_NAME, SILENCE_TIMEOUT_MS, FAREWELL_PHRASES,
+  uint8ToBase64, base64ToInt16, formatMsgTime, playDing,
+  playDialTone, requestMicStream, loadPcmWorklet, getWsCloseMessage, buildLiveConfig,
+} from "@/lib/voiceAgentSession";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,22 +20,18 @@ type SessionState = "idle" | "connecting" | "connected" | "error";
 interface Message {
   role: "model" | "user";
   text: string;
-}
-
-interface TranscriptEntry {
-  role: "model" | "user";
-  text: string;
   timestamp: string;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── System prompt ─────────────────────────────────────────────────────────────
+// (TranscriptEntry, SILENCE_TIMEOUT_MS, FAREWELL_PHRASES, and audio utilities imported from @/lib/avyaaSession)
 
 const buildSystemInstruction = (userName: string) =>
-  `You are Avyaa, a warm, magnetic, and deeply intuitive daily reflection companion built into the HWYD ("How Was Your Day") app. ` +
+  `You are ${AGENT_NAME}, a warm, magnetic, and deeply intuitive daily reflection companion built into the HWYD ("How Was Your Day") app. ` +
   `The user's name is ${userName}. Use their name naturally and sparingly — it should feel intimate, not robotic. ` +
   `Your personality: You are genuinely curious about this person's inner world. You notice things. You remember what they said earlier in the conversation and weave it back in. You speak with warmth and a quiet confidence — like a close friend who also happens to be incredibly perceptive. ` +
   `Your tone is conversational, slightly playful at times, and always emotionally present. Never clinical. Never generic. Make ${userName} feel like the most interesting person in the room. ` +
-  `Your opening line must be exactly: "Hello ${userName}! I'm Avyaa — think of me as your personal reflection companion. Everything you share with me stays completely private, just between us. You can tell me anything — how your day really went, what's on your mind, your goals, your habits, things you're proud of or want to change. I also quietly keep track of any tasks or things you want to get done, so nothing slips through the cracks. So — how was your day?" ` +
+  `Your opening line must be exactly: "Hello ${userName}! I'm ${AGENT_NAME} — think of me as your personal reflection companion. Everything you share with me stays completely private, just between us. You can tell me anything — how your day really went, what's on your mind, your goals, your habits, things you're proud of or want to change. I also quietly keep track of any tasks or things you want to get done, so nothing slips through the cracks. So — how was your day?" ` +
   `Keep all responses short and conversational — this is a real-time voice interaction. Two to four sentences maximum per turn. ` +
   `After the user responds to the opening, gently guide the conversation through the following topics one at a time, weaving them in naturally — never as a checklist: ` +
   `(1) Sleep — ask how many hours they slept. Frame it with genuine care: good sleep changes everything, and you want to help them see the patterns over time. ` +
@@ -45,39 +46,6 @@ const buildSystemInstruction = (userName: string) =>
   `Ask one thoughtful follow-up question when something interesting comes up — make them feel truly heard. ` +
   `End each of your turns with either a warm affirmation or a single question — never both at once. ` +
   `Be the kind of companion they look forward to talking to every single day.`;
-
-// AudioWorklet processor code — captures mic PCM at 16 kHz and posts it back
-const PCM_PROCESSOR_CODE = `
-class PCMCaptureProcessor extends AudioWorkletProcessor {
-  process(inputs) {
-    const channel = inputs[0]?.[0];
-    if (channel) {
-      const pcm16 = new Int16Array(channel.length);
-      for (let i = 0; i < channel.length; i++) {
-        pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(channel[i] * 32767)));
-      }
-      this.port.postMessage(pcm16.buffer, [pcm16.buffer]);
-    }
-    return true;
-  }
-}
-registerProcessor("pcm-capture-processor", PCMCaptureProcessor);
-`;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function uint8ToBase64(buf: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
-  return btoa(binary);
-}
-
-function base64ToInt16(b64: string): Int16Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Int16Array(bytes.buffer);
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -104,6 +72,9 @@ export function FirstLoginModal({ open, onClose }: Props) {
   const userTextBufRef = useRef("");
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   const nextPlayTimeRef = useRef(0); // schedule playback chunks back-to-back
+  const pendingAutoHangupRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleCloseRef = useRef<(() => Promise<void>) | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -126,6 +97,8 @@ export function FirstLoginModal({ open, onClose }: Props) {
     modelTextBufRef.current = "";
     userTextBufRef.current = "";
     transcriptRef.current = [];
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    pendingAutoHangupRef.current = false;
   }, []);
 
   // Clean up when modal closes
@@ -146,6 +119,14 @@ export function FirstLoginModal({ open, onClose }: Props) {
   }, [messages]);
 
   // ── Audio playback (queued, gapless) ─────────────────────────────────────────
+
+  const resetSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      console.log("[Avyaa] Silence timeout — auto-ending session");
+      handleCloseRef.current?.();
+    }, SILENCE_TIMEOUT_MS);
+  }, []);
 
   const scheduleAudioChunk = useCallback((pcm16: Int16Array, sampleRate: number) => {
     const ctx = playbackCtxRef.current;
@@ -180,6 +161,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
         dialToneCtxRef.current?.close().catch(() => null);
         dialToneCtxRef.current = null;
         setSessionState("connected");
+        resetSilenceTimer();
 
         // Trigger Avyaa's opening greeting via realtime text input
         sessionRef.current?.sendRealtimeInput({
@@ -234,6 +216,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
       if (sc.inputTranscription?.text) {
         console.log("[Avyaa] Input transcription chunk:", sc.inputTranscription.text);
         userTextBufRef.current += sc.inputTranscription.text;
+        resetSilenceTimer();
       }
 
       // Flush user speech when model starts its turn
@@ -242,7 +225,12 @@ export function FirstLoginModal({ open, onClose }: Props) {
         userTextBufRef.current = "";
         console.log("[Avyaa] User turn flushed:", userText);
         transcriptRef.current.push({ role: "user", text: userText, timestamp: new Date().toISOString() });
-        setMessages((prev) => [...prev, { role: "user", text: userText }]);
+        setMessages((prev) => [...prev, { role: "user", text: userText, timestamp: new Date().toISOString() }]);
+        const lower = userText.toLowerCase();
+        if (transcriptRef.current.length >= 4 && FAREWELL_PHRASES.some((p) => lower.includes(p))) {
+          console.log("[Avyaa] Goodbye phrase detected — will auto-end after Avyaa responds");
+          pendingAutoHangupRef.current = true;
+        }
       }
 
       if (sc.modelTurn?.parts) {
@@ -257,6 +245,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
             const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
             console.log("[Avyaa] Audio chunk received, sampleRate:", sampleRate, "bytes:", part.inlineData.data.length);
             scheduleAudioChunk(base64ToInt16(part.inlineData.data), sampleRate);
+            resetSilenceTimer();
           }
         }
       }
@@ -268,15 +257,22 @@ export function FirstLoginModal({ open, onClose }: Props) {
       }
 
       // Flush model text when turn is complete
-      if (sc.turnComplete && modelTextBufRef.current.trim()) {
-        const text = modelTextBufRef.current.trim();
-        modelTextBufRef.current = "";
-        console.log("[Avyaa] Model turn complete:", text);
-        transcriptRef.current.push({ role: "model", text, timestamp: new Date().toISOString() });
-        setMessages((prev) => [...prev, { role: "model", text }]);
+      if (sc.turnComplete) {
+        if (modelTextBufRef.current.trim()) {
+          const text = modelTextBufRef.current.trim();
+          modelTextBufRef.current = "";
+          console.log("[Avyaa] Model turn complete:", text);
+          transcriptRef.current.push({ role: "model", text, timestamp: new Date().toISOString() });
+          setMessages((prev) => [...prev, { role: "model", text, timestamp: new Date().toISOString() }]);
+        }
+        if (pendingAutoHangupRef.current) {
+          console.log("[Avyaa] Auto-hanging up after goodbye");
+          pendingAutoHangupRef.current = false;
+          setTimeout(() => handleCloseRef.current?.(), 1500);
+        }
       }
     },
-    [scheduleAudioChunk]
+    [scheduleAudioChunk, resetSilenceTimer]
   );
 
   // ── Start session ─────────────────────────────────────────────────────────────
@@ -287,23 +283,8 @@ export function FirstLoginModal({ open, onClose }: Props) {
       setErrorMsg("");
       console.log("[Avyaa] Starting session...");
 
-      // Play a soft dial tone while connecting (350 Hz + 440 Hz — standard dial tone)
-      try {
-        const dialCtx = new AudioContext();
-        dialToneCtxRef.current = dialCtx;
-        const gain = dialCtx.createGain();
-        gain.gain.value = 0.06;
-        gain.connect(dialCtx.destination);
-        [350, 440].forEach((freq) => {
-          const osc = dialCtx.createOscillator();
-          osc.type = "sine";
-          osc.frequency.value = freq;
-          osc.connect(gain);
-          osc.start();
-        });
-      } catch {
-        // Non-critical — ignore if AudioContext fails
-      }
+      // Play a soft dial tone while connecting
+      try { dialToneCtxRef.current = playDialTone(); } catch { /* non-critical */ }
 
       // 1. Get API key from Cloud Function
       console.log("[Avyaa] Fetching API key from mintGeminiSession...");
@@ -317,14 +298,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
       // 2. Request mic access
       console.log("[Avyaa] Requesting mic access...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
+      const stream = await requestMicStream();
       streamRef.current = stream;
       console.log("[Avyaa] Mic access granted, tracks:", stream.getAudioTracks().map(t => t.label));
 
@@ -340,39 +314,13 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
       // 5. Load AudioWorklet processor for mic capture
       console.log("[Avyaa] Loading AudioWorklet processor...");
-      const blob = new Blob([PCM_PROCESSOR_CODE], { type: "application/javascript" });
-      const workletUrl = URL.createObjectURL(blob);
-      await captureCtx.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
+      await loadPcmWorklet(captureCtx);
       console.log("[Avyaa] AudioWorklet loaded.");
 
-      // 6. Connect to Gemini Live API via @google/genai SDK
-      console.log("[Avyaa] Connecting to Gemini Live API...");
       const genAI = new GoogleGenAI({ apiKey });
       const liveSession = await genAI.live.connect({
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: "Aoede" },
-            },
-          },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
-              endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
-              prefixPaddingMs: 200,
-              silenceDurationMs: 2500,
-            },
-          },
-          systemInstruction: {
-            parts: [{ text: buildSystemInstruction(user?.displayName?.split(" ")[0] ?? "there") }],
-          },
-        },
+        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        config: buildLiveConfig(buildSystemInstruction(user?.displayName?.split(" ")[0] ?? "there")),
         callbacks: {
           onopen: () => {
             console.log("[Avyaa] WebSocket opened.");
@@ -382,25 +330,14 @@ export function FirstLoginModal({ open, onClose }: Props) {
             console.error("[Avyaa] WebSocket error:", err);
             sessionRef.current = null;
             setSessionState("error");
-            setErrorMsg("Avyaa couldn't connect right now. Please check your internet and try again.");
+            setErrorMsg(`${AGENT_NAME} couldn't connect right now. Please check your internet and try again.`);
             cleanup();
           },
           onclose: (evt: CloseEvent) => {
             console.warn("[Avyaa] WebSocket closed:", evt.code, evt.reason);
             sessionRef.current = null;
-            if (evt.code !== 1000) {
-              setSessionState("error");
-              let friendlyMsg = "The conversation ended unexpectedly. Please try again.";
-              if (evt.code === 1006) {
-                friendlyMsg = "The connection dropped. Please check your internet and try again.";
-              } else if (evt.code === 1008 || evt.code === 1003) {
-                friendlyMsg = "Avyaa isn't available right now. Please try again in a moment.";
-              } else if (evt.code === 1011) {
-                friendlyMsg = "Something went wrong on our end. Please try again shortly.";
-              }
-              setErrorMsg(friendlyMsg);
-              cleanup();
-            }
+            const errMsg = getWsCloseMessage(evt.code);
+            if (errMsg) { setSessionState("error"); setErrorMsg(errMsg); cleanup(); }
           },
         },
       });
@@ -418,7 +355,12 @@ export function FirstLoginModal({ open, onClose }: Props) {
     }
   }, [cleanup, handleLiveMessage, sessionState]);
 
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  });
+
   const handleClose = useCallback(async () => {
+    playDing();
     // Flush any remaining buffered user speech before saving
     if (userTextBufRef.current.trim()) {
       transcriptRef.current.push({
@@ -460,7 +402,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
           <div className="flex items-center justify-between px-6 pt-6 pb-4">
             <div>
               <h2 className="text-xl font-display font-bold text-foreground">
-                Meet Avyaa ✨
+                Meet {AGENT_NAME} ✨
               </h2>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {isIdle && "Your daily reflection companion"}
@@ -531,7 +473,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
               {isIdle && (
                 <p className="text-sm text-muted-foreground text-center px-8">
-                  Tap the mic to start your first conversation with Avyaa
+                  Tap the mic to start your first conversation with {AGENT_NAME}
                 </p>
               )}
 
@@ -578,7 +520,7 @@ export function FirstLoginModal({ open, onClose }: Props) {
                 {messages.length === 0 && (
                   <div className="flex justify-center py-6">
                     <p className="text-xs text-muted-foreground animate-pulse">
-                      Avyaa is speaking…
+                      {AGENT_NAME} is speaking…
                     </p>
                   </div>
                 )}
@@ -599,6 +541,9 @@ export function FirstLoginModal({ open, onClose }: Props) {
                       )}
                     >
                       {msg.text}
+                      <p className={cn("text-[10px] mt-1", msg.role === "user" ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                        {formatMsgTime(msg.timestamp)}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -606,26 +551,20 @@ export function FirstLoginModal({ open, onClose }: Props) {
 
               {/* Active mic + end session */}
               <div className="flex flex-col items-center gap-3 pt-4 pb-6 border-t border-border/40 mt-2">
-                {/* Animated active mic */}
+                {/* Tappable end-call button */}
                 <div className="relative flex items-center justify-center">
                   <span
-                    className="absolute h-20 w-20 rounded-full bg-primary/15 animate-ping"
+                    className="absolute h-20 w-20 rounded-full bg-destructive/25 animate-ping"
                     style={{ animationDuration: "1.5s" }}
                   />
-                  <div className="relative z-10 h-14 w-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
-                    <Mic className="h-6 w-6" />
-                  </div>
+                  <button
+                    onClick={handleClose}
+                    className="relative z-10 h-16 w-16 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-xl hover:scale-105 transition-transform active:scale-95"
+                  >
+                    <PhoneOff className="h-6 w-6" />
+                  </button>
                 </div>
-                <p className="text-xs text-muted-foreground">Speak freely — Avyaa is listening</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleClose}
-                  className="gap-2 rounded-full text-muted-foreground border-muted-foreground/30 hover:text-destructive hover:border-destructive"
-                >
-                  <PhoneOff className="h-3.5 w-3.5" />
-                  End session
-                </Button>
+                <p className="text-xs text-muted-foreground">Tap to end — {AGENT_NAME} is listening</p>
               </div>
             </>
           )}

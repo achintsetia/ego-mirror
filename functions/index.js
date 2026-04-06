@@ -3,6 +3,7 @@ require("dotenv").config();
 const {setGlobalOptions} = require("firebase-functions");
 const {mintGeminiSession} = require("./src/mintGeminiSession");
 const {saveSession} = require("./src/saveSession");
+const {getUserContext} = require("./src/getUserContext");
 const {analyzeProductivity} = require("./src/analyzeProductivity");
 const {extractUserInsights} = require("./src/extractUserInsights");
 const {analyzeFoodIntake} = require("./src/analyzeFoodIntake");
@@ -13,6 +14,7 @@ setGlobalOptions({maxInstances: 10, region: "asia-south1"});
 
 exports.mintGeminiSession = mintGeminiSession;
 exports.saveSession = saveSession;
+exports.getUserContext = getUserContext;
 exports.analyzeProductivity = analyzeProductivity;
 exports.extractUserInsights = extractUserInsights;
 exports.analyzeFoodIntake = analyzeFoodIntake;

@@ -13,6 +13,7 @@ export interface TranscriptMessage {
 export interface VoiceSession {
   id: string;       // dateKey DD-MM-YYYY (Firestore doc ID)
   isoDate: string;  // YYYY-MM-DD for display/grouping
+  createdAt: Date;
   summary: string | null;
   transcript: TranscriptMessage[];
 }
@@ -54,6 +55,9 @@ export const useVoiceSessionHistory = (): VoiceSessionHistoryData => {
           return {
             id: docSnap.id,
             isoDate: dateKeyToISO(docSnap.id),
+            createdAt: data.createdAt instanceof Timestamp
+              ? data.createdAt.toDate()
+              : new Date(data.createdAt),
             summary: (data.summary as string) ?? null,
             transcript: Array.isArray(data.transcript)
               ? (data.transcript as TranscriptMessage[])
