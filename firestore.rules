@@ -202,6 +202,27 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Conversations — keyed by user email, subcollection sessions keyed by DD/MM/YYYY
+    // Written only by Cloud Functions (Admin SDK); readable only by the owner
+    match /conversations/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+
+      match /sessions/{dateKey} {
+        allow read: if isAuthenticated() && request.auth.token.email == email;
+        allow write: if false;
+      }
+    }
+
+    // User profiles — first-login onboarding tracking
+    match /user_profiles/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if false;
+    }
+
     // Default deny all other collections
     match /{document=**} {
       allow read, write: if false;

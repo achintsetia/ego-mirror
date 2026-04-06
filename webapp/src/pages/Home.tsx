@@ -26,9 +26,12 @@ import {
   CheckCircle2,
   Flame,
 } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { FirstLoginModal } from "@/components/FirstLoginModal";
+import { useAuth } from "@/contexts/AuthContext";
 
 const energyColor = {
   high: "bg-mint text-mint-light",
@@ -66,9 +69,17 @@ const TrendIcon = ({ trend }: { trend: string }) => {
 const Home = () => {
   const productivityPct = todayEntry.productivity * 10;
   const topStreak = [...habits].sort((a, b) => b.streak - a.streak)[0];
+  const { isFirstLogin, markOnboardingDone } = useAuth();
+  const [modalOpen, setModalOpen] = useState(isFirstLogin);
+
+  const handleModalClose = async () => {
+    setModalOpen(false);
+    await markOnboardingDone();
+  };
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-8">
+      <FirstLoginModal open={modalOpen} onClose={handleModalClose} />
       {/* Hero Greeting */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-lavender-light to-mint-light p-6 md:p-8">
         <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-lavender/10 blur-3xl" />

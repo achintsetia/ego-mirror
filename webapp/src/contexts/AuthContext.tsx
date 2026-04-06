@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -6,11 +6,14 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { auth } from "@/firebase";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/firebase";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isFirstLogin: boolean;
+  markOnboardingDone: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -18,6 +21,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  isFirstLogin: false,
+  markOnboardingDone: async () => {},
   signInWithGoogle: async () => {},
   logout: async () => {},
 });
@@ -25,14 +30,47 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const profileRef = doc(db, "user_profiles", firebaseUser.uid);
+        const profileSnap = await getDoc(profileRef);
+
+        if (!profileSnap.exists()) {
+          // First ever login — create profile
+          await setDoc(profileRef, {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            onboardingCompleted: false,
+            createdAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+          });
+          setIsFirstLogin(true);
+        } else {
+          const profile = profileSnap.data();
+          setIsFirstLogin(!profile.onboardingCompleted);
+          // Update last login time
+          await setDoc(profileRef, { lastLoginAt: serverTimestamp() }, { merge: true });
+        }
+      } else {
+        setIsFirstLogin(false);
+      }
       setUser(firebaseUser);
       setLoading(false);
     });
     return unsubscribe;
   }, []);
+
+  const markOnboardingDone = useCallback(async () => {
+    if (!user) return;
+    const profileRef = doc(db, "user_profiles", user.uid);
+    await setDoc(profileRef, { onboardingCompleted: true }, { merge: true });
+    setIsFirstLogin(false);
+  }, [user]);
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -44,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, isFirstLogin, markOnboardingDone, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
