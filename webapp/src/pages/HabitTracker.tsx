@@ -1,146 +1,421 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { habits, habitCompletionRate } from "@/data/mockData";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { useHabitData, type ChartRange, type ChartPoint } from "@/hooks/useHabitData";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import { cn } from "@/lib/utils";
-import { format, parseISO } from "date-fns";
+import {
+  CheckCircle2,
+  XCircle,
+  Moon,
+  Dumbbell,
+  Utensils,
+  Target,
+  TrendingUp,
+  TrendingDown,
+  Flame,
+} from "lucide-react";
 
-type TimeRange = "7d" | "30d";
-
-const colorMap: Record<string, { bg: string; fill: string; bar: string }> = {
-  mint: { bg: "bg-mint-light", fill: "bg-mint", bar: "bg-mint" },
-  lavender: { bg: "bg-lavender-light", fill: "bg-lavender", bar: "bg-lavender" },
-  peach: { bg: "bg-peach-light", fill: "bg-peach", bar: "bg-peach" },
-  sky: { bg: "bg-sky-light", fill: "bg-sky", bar: "bg-sky" },
+const sleepQualityColor: Record<string, string> = {
+  excellent: "bg-mint text-mint-light",
+  good: "bg-mint/70 text-mint-light",
+  okay: "bg-sky text-sky-light",
+  poor: "bg-peach/70 text-peach-light",
+  terrible: "bg-peach text-peach-light",
 };
 
-const HabitTracker = () => {
-  const [range, setRange] = useState<TimeRange>("7d");
-  const days = range === "7d" ? 7 : 30;
+const RANGES: { key: ChartRange; label: string }[] = [
+  { key: "7d", label: "7D" },
+  { key: "30d", label: "30D" },
+  { key: "3m", label: "3M" },
+];
+
+function MiniChart({
+  data,
+  color,
+  loading,
+  unit,
+  emptyText,
+}: {
+  data: ChartPoint[];
+  color: string;
+  loading: boolean;
+  unit: string;
+  emptyText: string;
+}) {
+  if (loading) return <div className="h-28 bg-muted/40 rounded-lg animate-pulse" />;
+  if (!data.length)
+    return <p className="text-xs text-muted-foreground py-6 text-center">{emptyText}</p>;
+
+  const chartData = data.map((p) => ({ label: p.label, value: p.value ?? 0 }));
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold">Habit Tracker</h1>
-          <p className="text-muted-foreground mt-1">Build the identity you want, one day at a time</p>
-        </div>
-        <div className="flex gap-1 bg-muted rounded-lg p-1">
-          {(["7d", "30d"] as const).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={cn(
-                "px-3 py-1.5 text-sm rounded-md font-medium transition-colors",
-                range === r
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {r === "7d" ? "7 Days" : "30 Days"}
-            </button>
-          ))}
+    <ResponsiveContainer width="100%" height={112}>
+      <BarChart data={chartData} barCategoryGap="30%">
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          axisLine={false}
+          tickLine={false}
+          interval="preserveStartEnd"
+        />
+        <YAxis hide />
+        <RechartsTooltip
+          contentStyle={{
+            background: "hsl(var(--popover))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: "8px",
+            fontSize: "12px",
+          }}
+          formatter={(v: number) => [`${v} ${unit}`, ""]}
+          cursor={{ fill: "hsl(var(--muted))" }}
+        />
+        <Bar dataKey="value" fill={color} radius={[4, 4, 0, 0]} maxBarSize={28} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+const HabitTracker = () => {
+  const [range, setRange] = useState<ChartRange>("7d");
+  const {
+    loading,
+    chartLoading,
+    goodHabits,
+    badHabits,
+    goals,
+    latestFood,
+    latestExercise,
+    latestSleep,
+    sleepChart,
+    exerciseChart,
+    caloriesChart,
+    productivityChart,
+  } = useHabitData(range);
+
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-5xl mx-auto animate-pulse">
+        <div className="h-8 w-48 bg-muted rounded" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => <div key={i} className="h-44 bg-muted rounded-xl" />)}
         </div>
       </div>
+    );
+  }
 
-      {/* Completion Rate */}
-      <Card className="border-none shadow-sm bg-lavender-light">
-        <CardContent className="p-6 flex items-center gap-6">
-          <div className="relative h-20 w-20 shrink-0">
-            <svg className="h-20 w-20 -rotate-90" viewBox="0 0 36 36">
-              <path
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="hsl(var(--border))"
-                strokeWidth="3"
-              />
-              <path
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="hsl(var(--lavender))"
-                strokeWidth="3"
-                strokeDasharray={`${habitCompletionRate}, 100`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-lg font-bold font-display">
-              {habitCompletionRate}%
-            </span>
+  return (
+    <div className="space-y-8 max-w-5xl mx-auto pb-8">
+      <div>
+        <h1 className="text-2xl md:text-3xl font-display font-bold">Habit Tracker</h1>
+        <p className="text-muted-foreground mt-1">Build the identity you want, one day at a time</p>
+      </div>
+
+      {/* Trends — Charts with range selector */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground">
+            Trends
+          </h2>
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
+            {RANGES.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setRange(key)}
+                className={cn(
+                  "px-3 py-1 text-xs rounded-md font-medium transition-colors",
+                  range === key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <div>
-            <p className="font-display font-bold text-lg">Today's Completion</p>
-            <p className="text-sm text-muted-foreground">
-              {habits.filter(h => h.completedToday).length} of {habits.length} habits done
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Habit Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {habits.map((habit) => {
-          const colors = colorMap[habit.color] || colorMap.mint;
-          const visibleData = habit.dailyData.slice(-days);
-          const maxHours = Math.max(...visibleData.map(d => d.hours), 1);
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-display flex items-center gap-2">
+                <Moon className="h-4 w-4 text-lavender" /> Sleep Hours
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <MiniChart
+                data={sleepChart}
+                color="hsl(var(--lavender))"
+                loading={chartLoading}
+                unit="hrs"
+                emptyText="No sleep data yet — tell Avyaa how you slept."
+              />
+            </CardContent>
+          </Card>
 
-          return (
-            <Card key={habit.id} className="border-none shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-display flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <span className="text-xl">{habit.icon}</span>
-                    {habit.name}
-                  </span>
-                  {habit.completedToday ? (
-                    <CheckCircle2 className="h-5 w-5 text-mint" />
-                  ) : (
-                    <XCircle className="h-5 w-5 text-muted-foreground/40" />
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-display flex items-center gap-2">
+                <Dumbbell className="h-4 w-4 text-mint" /> Exercise Duration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <MiniChart
+                data={exerciseChart}
+                color="hsl(var(--mint))"
+                loading={chartLoading}
+                unit="min"
+                emptyText="No exercise data yet — tell Avyaa about your workouts."
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-display flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-sky" /> Productivity Score
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <MiniChart
+                data={productivityChart}
+                color="hsl(var(--sky))"
+                loading={chartLoading}
+                unit="/ 100"
+                emptyText="No productivity data yet — tell Avyaa about your day."
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-display flex items-center gap-2">
+                <Flame className="h-4 w-4 text-peach" /> Calorie Intake
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <MiniChart
+                data={caloriesChart}
+                color="hsl(var(--peach))"
+                loading={chartLoading}
+                unit="kcal"
+                emptyText="No food data yet — tell Avyaa what you ate."
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Latest Daily Stats — Sleep / Exercise / Food */}
+      <section>
+        <h2 className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+          Latest daily snapshot
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+          {/* Sleep */}
+          <Card className="border-none shadow-sm bg-lavender-light">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-display flex items-center gap-2">
+                <Moon className="h-4 w-4 text-lavender" /> Sleep
+              </CardTitle>
+              {latestSleep?.dateKey && (
+                <CardDescription className="text-xs">{latestSleep.dateKey}</CardDescription>
+              )}
+            </CardHeader>
+            <CardContent>
+              {latestSleep ? (
+                <div className="space-y-2">
+                  {latestSleep.hoursSlept !== null && (
+                    <p className="text-3xl font-display font-bold">
+                      {latestSleep.hoursSlept}
+                      <span className="text-base text-muted-foreground"> hrs</span>
+                    </p>
                   )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Badge variant="secondary" className="text-xs">
-                  🔥 {habit.streak} day streak
-                </Badge>
-
-                {/* Hours bar chart */}
-                <div className="flex items-end gap-[2px]">
-                  {visibleData.map((day, i) => {
-                    const height = day.hours > 0 ? Math.max(8, (day.hours / maxHours) * 48) : 4;
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
-                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                          {day.hours > 0 ? `${day.hours}h` : "—"}
-                        </div>
-                        <div
-                          className={cn(
-                            "w-full rounded-sm transition-all",
-                            day.hours > 0 ? colors.fill : "bg-muted"
-                          )}
-                          style={{ height: `${height}px` }}
-                        />
-                        {range === "7d" && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {format(parseISO(day.date), "EEE").charAt(0)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {latestSleep.sleepQuality && (
+                    <Badge className={`${sleepQualityColor[latestSleep.sleepQuality] ?? ""} border-none capitalize text-xs`}>
+                      {latestSleep.sleepQuality}
+                    </Badge>
+                  )}
+                  {latestSleep.bedtime && latestSleep.wakeTime && (
+                    <p className="text-xs text-muted-foreground">
+                      {latestSleep.bedtime} → {latestSleep.wakeTime}
+                    </p>
+                  )}
+                  {latestSleep.observations.length > 0 && (
+                    <ul className="space-y-1 mt-1">
+                      {latestSleep.observations.map((obs, i) => (
+                        <li key={i} className="text-xs text-foreground/70">· {obs}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No sleep data yet — tell Avyaa how you slept.</p>
+              )}
+            </CardContent>
+          </Card>
 
-                {/* Total hours for period */}
-                <p className="text-xs text-muted-foreground">
-                  {visibleData.reduce((sum, d) => sum + d.hours, 0).toFixed(1)}h total · {visibleData.filter(d => d.completed).length}/{days} days
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
+          {/* Exercise */}
+          <Card className="border-none shadow-sm bg-mint-light">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-display flex items-center gap-2">
+                <Dumbbell className="h-4 w-4 text-mint" /> Exercise
+              </CardTitle>
+              {latestExercise?.dateKey && (
+                <CardDescription className="text-xs">{latestExercise.dateKey}</CardDescription>
+              )}
+            </CardHeader>
+            <CardContent>
+              {latestExercise ? (
+                <div className="space-y-2">
+                  <p className="text-3xl font-display font-bold">
+                    {latestExercise.totalDurationMinutes}
+                    <span className="text-base text-muted-foreground"> min</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ~{latestExercise.totalCaloriesBurned} kcal burned
+                  </p>
+                  <ul className="space-y-1 mt-1">
+                    {latestExercise.activities.map((a, i) => (
+                      <li key={i} className="text-xs text-foreground/70">
+                        · {a.name} — {a.durationMinutes} min
+                      </li>
+                    ))}
+                  </ul>
+                  {latestExercise.notes && (
+                    <p className="text-xs text-muted-foreground italic mt-1">{latestExercise.notes}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No exercise data yet — tell Avyaa about your workouts.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Food */}
+          <Card className="border-none shadow-sm bg-peach-light">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-display flex items-center gap-2">
+                <Utensils className="h-4 w-4 text-peach" /> Food
+              </CardTitle>
+              {latestFood?.dateKey && (
+                <CardDescription className="text-xs">{latestFood.dateKey}</CardDescription>
+              )}
+            </CardHeader>
+            <CardContent>
+              {latestFood ? (
+                <div className="space-y-2">
+                  <p className="text-3xl font-display font-bold">
+                    {latestFood.totalCalories}
+                    <span className="text-base text-muted-foreground"> kcal</span>
+                  </p>
+                  <ul className="space-y-1 mt-1">
+                    {latestFood.meals.map((m, i) => (
+                      <li key={i} className="text-xs text-foreground/70">
+                        · {m.name}: {m.approximateCalories} kcal
+                      </li>
+                    ))}
+                  </ul>
+                  {latestFood.notes && (
+                    <p className="text-xs text-muted-foreground italic mt-1">{latestFood.notes}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No food data yet — tell Avyaa what you ate today.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Good Habits + Bad Habits + Goals */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Good Habits */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-mint" /> Good Habits
+            </CardTitle>
+            <CardDescription>Positive patterns you're building</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {goodHabits.length > 0 ? (
+              <ul className="space-y-2">
+                {goodHabits.map((habit, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-mint shrink-0 mt-0.5" />
+                    <span>{habit}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Good habits you mention to Avyaa will appear here.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Bad Habits */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <TrendingDown className="h-4 w-4 text-peach" /> Working on Quitting
+            </CardTitle>
+            <CardDescription>Habits you want to address</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {badHabits.length > 0 ? (
+              <ul className="space-y-2">
+                {badHabits.map((habit, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <XCircle className="h-4 w-4 text-peach shrink-0 mt-0.5" />
+                    <span>{habit}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Bad habits you want to quit will appear here after chatting with Avyaa.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Goals */}
+        <Card className="border-none shadow-sm bg-lavender-light">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <Target className="h-4 w-4 text-lavender" /> Your Goals
+            </CardTitle>
+            <CardDescription>What you're working towards</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {goals.length > 0 ? (
+              <ul className="space-y-2">
+                {goals.map((goal, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <Target className="h-4 w-4 text-lavender shrink-0 mt-0.5" />
+                    <span>{goal}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Goals you share with Avyaa will appear here.</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 };
 
 export default HabitTracker;
+

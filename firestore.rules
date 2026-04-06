@@ -59,6 +59,39 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Food intake — written by Cloud Functions on each session; readable by the owner
+    match /food/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+
+      match /entries/{dateKey} {
+        allow read: if isAuthenticated() && request.auth.token.email == email;
+        allow write: if false;
+      }
+    }
+
+    // Exercise — written by Cloud Functions on each session; readable by the owner
+    match /exercise/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+
+      match /entries/{dateKey} {
+        allow read: if isAuthenticated() && request.auth.token.email == email;
+        allow write: if false;
+      }
+    }
+
+    // Sleep — written by Cloud Functions on each session; readable by the owner
+    match /sleep/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+
+      match /entries/{dateKey} {
+        allow read: if isAuthenticated() && request.auth.token.email == email;
+        allow write: if false;
+      }
+    }
+
     // Default deny everything else
     match /{document=**} {
       allow read, write: if false;
