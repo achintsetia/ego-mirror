@@ -1,4 +1,4 @@
-import { Mic, Target, Brain, BarChart3, Users, Settings } from "lucide-react";
+import { Mic, Target, Brain, BarChart3, Users, Settings, Home } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -17,7 +17,8 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
-  { title: "Habit Tracker", url: "/", icon: Target },
+  { title: "Home", url: "/", icon: Home },
+  { title: "Habit Tracker", url: "/habits", icon: Target },
   { title: "Voice Companion", url: "/voice", icon: Mic },
   { title: "Personality", url: "/personality", icon: Brain },
   { title: "Reports", url: "/reports", icon: BarChart3 },
@@ -37,9 +38,22 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold font-display shrink-0">
-            E
-          </div>
+          <svg className="h-8 w-8 shrink-0" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="em-bg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#7c3aed"/>
+                <stop offset="100%" stopColor="#06b6d4"/>
+              </linearGradient>
+              <linearGradient id="em-shine" x1="0.2" y1="0" x2="0.8" y2="1">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.3"/>
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            <rect width="32" height="32" rx="7" fill="url(#em-bg)"/>
+            <ellipse cx="16" cy="12" rx="8" ry="9.5" fill="url(#em-shine)" stroke="white" strokeWidth="1.5" strokeOpacity="0.8"/>
+            <rect x="14.75" y="21" width="2.5" height="6" rx="1.25" fill="white" fillOpacity="0.7"/>
+            <path d="M16 7 L16.8 11 L21 12 L16.8 13 L16 17 L15.2 13 L11 12 L15.2 11 Z" fill="white" fillOpacity="0.92"/>
+          </svg>
           {!collapsed && (
             <span className="font-display font-bold text-lg text-foreground">
               Ego-Mirror

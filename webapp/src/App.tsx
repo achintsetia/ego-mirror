@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/Layout";
+import Home from "./pages/Home";
 import VoiceCompanion from "./pages/VoiceCompanion";
 import HabitTracker from "./pages/HabitTracker";
 import PersonalityEvolution from "./pages/PersonalityEvolution";
@@ -22,7 +23,8 @@ const App = () => (
       <BrowserRouter>
         <Layout>
           <Routes>
-            <Route path="/" element={<HabitTracker />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/habits" element={<HabitTracker />} />
             <Route path="/voice" element={<VoiceCompanion />} />
             <Route path="/personality" element={<PersonalityEvolution />} />
             <Route path="/reports" element={<Reports />} />
