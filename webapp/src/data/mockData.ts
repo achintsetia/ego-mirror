@@ -68,7 +68,7 @@ export const dailyEntries: DailyEntry[] = Array.from({ length: 30 }, (_, i) => (
   suggestions: pick(suggestionPool, 3),
 }));
 
-export const todayEntry = dailyEntries[dailyEntries.length - 1];
+export const todayEntry: DailyEntry | null = null; // populated from Firestore once real session data is available
 
 // ── Habits ──
 export interface HabitDayData {

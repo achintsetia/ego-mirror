@@ -1,208 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.role == 'admin' || 
-        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
-    }
-    
-    
-    // Users collection
-    match /users/{userId} {
-      // Allow if owner OR if requester has admin claim. 
-      // Admin-by-Firestore will still be able to read others because isAdmin() 
-      // will succeed in fetching the admin's own doc via the isOwner rule.
-      // Allow if owner OR if requester is admin
-      allow read: if isOwner(userId) || isAdmin();
-      
-      // Users can create their own profile (for first-time login)
-      allow create: if isOwner(userId) 
-        && request.resource.data.isActive == true
-        && (!request.resource.data.keys().hasAll(['role']) 
-            || request.resource.data.role == 'user' 
-            || request.resource.data.role == 'agency');
-      
-      // Admins can update any profile; owners can update their own with restrictions
-      allow update: if isAdmin() || (isOwner(userId) && (
-        // Scenario 1: Setting role for the first time (plan selection)
-        (!resource.data.keys().hasAll(['role']) && 
-         request.resource.data.keys().hasAll(['role']) &&
-         (request.resource.data.role == 'user' || request.resource.data.role == 'agency'))
-        ||
-        // Scenario 2: Normal profile updates (cannot change role if it exists)
-        (!request.resource.data.keys().hasAll(['role']) || 
-         !resource.data.keys().hasAll(['role']) || 
-         resource.data.role == request.resource.data.role)
-      ));
-      
-      // Users cannot delete their own profiles
-      allow delete: if false;
-    }
-    
-    // Brands collection - One-to-many relationship with users
-    match /brands/{brandId} {
-      // Admins can read all brands, users can read their own brands
-      allow read: if isAdmin() || (isAuthenticated());
-      
-      // Users can create brands (via Cloud Function, but also allow client-side)
-      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
-      
-      // Admins can update all brands, users can update their own brands
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
-      
-      // Admins can delete all brands, users can delete their own brands
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
-    }
-    
-    // Prompts collection - Linked to brands and users
-    match /prompts/{promptId} {
-      // Admins can read all prompts; users can read their own prompts
-      // (prompts are always stored with the brand owner's user_id)
-      allow read: if isAdmin() || (isAuthenticated());
 
-      // Admins can create prompts for any brand; users can create for their own brands
-      allow create: if isAdmin() || (isAuthenticated() && request.resource.data.user_id == request.auth.uid);
-
-      // Admins can update/delete all prompts; users can update/delete their own
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
-
-      // Audit history sub-collections
-      match /audits/{auditPath=**} {
-        allow read: if isAdmin() || (isAuthenticated());
-      }
-
-      // Prompt-level insights / recommendations (written by Cloud Functions only)
-      match /recommendations/{datePath} {
-        allow read: if isAdmin() || (
-          isAuthenticated() &&
-          get(/databases/$(database)/documents/prompts/$(promptId)).data.user_id == request.auth.uid
-        );
-        allow write: if false; // Written only by Cloud Functions via Admin SDK
-      }
-
-      // Real-time generation progress (written by Cloud Functions only)
-      match /insight_progress/{docId} {
-        allow read: if isAdmin() || (
-          isAuthenticated() &&
-          get(/databases/$(database)/documents/prompts/$(promptId)).data.user_id == request.auth.uid
-        );
-        allow write: if false; // Written only by Cloud Functions via Admin SDK
-      }
-    }
-    
-    // Models collection - Admin only
-    match /models/{modelId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Cited domains - publicly readable so the frontend can look up domain classifications
-    // without requiring auth. Written only by Cloud Functions via Admin SDK.
-    match /cited_domains/{domain} {
-      allow read: if true;
-      allow write: if false; // Written only by Cloud Functions via Admin SDK
-    }
-
-    // Domain classifier run history - admin read only. Written only by Cloud Functions.
-    match /domain_classifier_runs/{runId} {
-      allow read: if isAdmin();
-      allow write: if false; // Written only by Cloud Functions via Admin SDK
-    }
-
-    // AI Optimization Models config - Admin only (read/write from admin UI)
-    // Cloud Functions access this via Admin SDK, which bypasses these rules.
-    match /ai_optimization_models/{provider} {
-      allow read, write: if isAdmin();
-    }
-
-    // User config collection - users can only access their own config
-    // Both spellings are matched for safety (canonical is lowercase)
-    match /userconfig/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /userConfig/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // Generated content collection - users can read/write their own, admins can read all
-    match /generated_content/{promptId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create, update: if false; // Written only by Cloud Functions
-    }
-
-    // Custom generated content (from Content tab) - scoped by brandId
-    // Written by Cloud Functions via Admin SDK; readable/deletable by brand owner
-    match /custom_generated_content/{docId} {
-      allow read: if isAdmin() || (
-        isAuthenticated() &&
-        get(/databases/$(database)/documents/brands/$(resource.data.brandId)).data.user_id == request.auth.uid
-      );
-      allow delete: if isAdmin() || (
-        isAuthenticated() &&
-        get(/databases/$(database)/documents/brands/$(resource.data.brandId)).data.user_id == request.auth.uid
-      );
-      allow create, update: if false; // Written only by Cloud Functions via Admin SDK
-    }
-
-    // Data sync failure tracking - Admin only for debugging and retries
-    match /{collection}/{id} {
-      allow read, write: if isAdmin() && collection.matches('^_failedSync_.*');
-    }
-
-    // Audit queue tracking - written by Cloud Functions, readable by admins
-    match /auditQueue/{docId} {
-      allow read: if isAdmin();
-      allow write: if false; // Written only by Cloud Functions
-    }
-
-    // Dead-letter for failed audit tasks - Admin only
-    match /_failedAudit/{docId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Audit results status docs - written by Cloud Functions, readable by admins
-    match /auditResults/{promptId}/{datePath}/{modelId} {
-      allow read: if isAdmin();
-      allow write: if false; // Written only by Cloud Functions
-    }
-
-    // Plan collections - readable by all authenticated users, writable only by admins
-    match /user_plans/{planId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /agency_plans/{planId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /plan_config/{configId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // Conversations — keyed by user email, subcollection sessions keyed by DD/MM/YYYY
+    // Conversations — keyed by user email, subcollection sessions keyed by DD-MM-YYYY
     // Written only by Cloud Functions (Admin SDK); readable only by the owner
     match /conversations/{email} {
       allow read: if isAuthenticated() && request.auth.token.email == email;
@@ -216,16 +24,45 @@ service cloud.firestore {
 
     // User profiles — first-login onboarding tracking
     match /user_profiles/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId)
-        && request.resource.data.uid == request.auth.uid;
-      allow update: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.uid == request.auth.uid;
+      allow update: if isOwner(userId);
       allow delete: if false;
     }
 
-    // Default deny all other collections
+    // Productivity entries — written only by Cloud Functions (Admin SDK) on session create
+    match /productivity/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+
+      match /entries/{dateKey} {
+        allow read: if isAuthenticated() && request.auth.token.email == email;
+        allow write: if false;
+      }
+    }
+
+    // Goals — accumulated by Cloud Functions on each session; readable by the owner
+    match /goals/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+    }
+
+    // Good habits — accumulated by Cloud Functions on each session; readable by the owner
+    match /goodhabits/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+    }
+
+    // Bad habits — accumulated by Cloud Functions on each session; readable by the owner
+    match /badhabits/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if false;
+    }
+
+    // Default deny everything else
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+

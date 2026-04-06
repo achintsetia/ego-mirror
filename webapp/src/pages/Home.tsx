@@ -67,7 +67,8 @@ const TrendIcon = ({ trend }: { trend: string }) => {
 };
 
 const Home = () => {
-  const productivityPct = todayEntry.productivity * 10;
+  const hasData = !!todayEntry?.mood;
+  const productivityPct = hasData ? todayEntry.productivity * 10 : 0;
   const topStreak = [...habits].sort((a, b) => b.streak - a.streak)[0];
   const { user, isFirstLogin, markOnboardingDone } = useAuth();
   const firstName = user?.displayName?.split(" ")[0] ?? "there";
@@ -93,7 +94,9 @@ const Home = () => {
             {greetingByHour()}, {firstName} <span className="inline-block animate-pulse-soft">✨</span>
           </h1>
           <p className="text-muted-foreground mt-2 max-w-lg">
-            Last time you felt <span className="font-medium capitalize">{todayEntry.mood}</span> — here's a snapshot of how you're showing up and growing.
+            {todayEntry?.mood
+              ? <>Last time you felt <span className="font-medium capitalize">{todayEntry.mood}</span> — here's a snapshot of how you're showing up and growing.</>
+              : "Start your first conversation with Avyaa to begin tracking your journey."}
           </p>
         </div>
       </div>
@@ -107,13 +110,17 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-3">
-              <span className="text-5xl drop-shadow-sm">{moodEmoji[todayEntry.mood]}</span>
-              <div>
-                <p className="text-xl font-display font-bold capitalize">{todayEntry.mood}</p>
-                <p className="text-xs text-muted-foreground">Overall feeling today</p>
+            {hasData ? (
+              <div className="flex items-center gap-3">
+                <span className="text-5xl drop-shadow-sm">{moodEmoji[todayEntry.mood]}</span>
+                <div>
+                  <p className="text-xl font-display font-bold capitalize">{todayEntry.mood}</p>
+                  <p className="text-xs text-muted-foreground">Overall feeling last session</p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No data yet — chat with Avyaa to get started</p>
+            )}
           </CardContent>
         </Card>
 
@@ -124,13 +131,17 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p className="text-3xl font-display font-bold">
-                {todayEntry.productivity}
-                <span className="text-lg text-muted-foreground">/10</span>
-              </p>
-              <Progress value={productivityPct} className="h-2" />
-            </div>
+            {hasData ? (
+              <div className="space-y-2">
+                <p className="text-3xl font-display font-bold">
+                  {todayEntry.productivity}
+                  <span className="text-lg text-muted-foreground">/10</span>
+                </p>
+                <Progress value={productivityPct} className="h-2" />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No data yet</p>
+            )}
           </CardContent>
         </Card>
 
@@ -141,12 +152,18 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Badge
-              className={`${energyColor[todayEntry.energy]} text-sm px-3 py-1 capitalize border-none`}
-            >
-              {todayEntry.energy}
-            </Badge>
-            <p className="text-xs text-muted-foreground mt-2">Energy level right now</p>
+            {hasData ? (
+              <>
+                <Badge
+                  className={`${energyColor[todayEntry.energy]} text-sm px-3 py-1 capitalize border-none`}
+                >
+                  {todayEntry.energy}
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-2">Energy level last session</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No data yet</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -161,9 +178,15 @@ const Home = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-foreground/80 leading-relaxed italic text-sm">
-              "{todayEntry.reflection}"
-            </p>
+            {hasData ? (
+              <p className="text-foreground/80 leading-relaxed italic text-sm">
+                "{todayEntry.reflection}"
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                Your reflection will appear here after your first conversation with Avyaa.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -174,6 +197,11 @@ const Home = () => {
           </CardHeader>
           <CardContent className="pb-4">
             <div className="h-24">
+              {moodChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-xs text-muted-foreground">No mood data yet</p>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={moodChartData}>
                   <defs>
@@ -209,6 +237,7 @@ const Home = () => {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -389,19 +418,23 @@ const Home = () => {
             <CardDescription>Personalized nudges based on your patterns</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-3">
-              {todayEntry.suggestions.map((suggestion, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-3 text-sm text-foreground/80"
-                >
-                  <span className="mt-0.5 h-5 w-5 rounded-full bg-mint/20 flex items-center justify-center text-xs font-bold text-mint shrink-0">
-                    {i + 1}
-                  </span>
-                  {suggestion}
-                </li>
-              ))}
-            </ul>
+            {hasData ? (
+              <ul className="space-y-3">
+                {todayEntry.suggestions.map((suggestion, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-3 text-sm text-foreground/80"
+                  >
+                    <span className="mt-0.5 h-5 w-5 rounded-full bg-mint/20 flex items-center justify-center text-xs font-bold text-mint shrink-0">
+                      {i + 1}
+                    </span>
+                    {suggestion}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Personalized suggestions will appear after your first conversation with Avyaa.</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -413,17 +446,21 @@ const Home = () => {
             <CardTitle className="text-base font-display">Today's Activities</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {todayEntry.activities.map((activity, i) => (
-                <Badge
-                  key={i}
-                  variant="secondary"
-                  className="px-3 py-1.5 text-sm font-normal bg-muted/60"
-                >
-                  {activity}
-                </Badge>
-              ))}
-            </div>
+            {hasData && todayEntry.activities?.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {todayEntry.activities.map((activity, i) => (
+                  <Badge
+                    key={i}
+                    variant="secondary"
+                    className="px-3 py-1.5 text-sm font-normal bg-muted/60"
+                  >
+                    {activity}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Your activities will appear here after your first conversation.</p>
+            )}
           </CardContent>
         </Card>
 
