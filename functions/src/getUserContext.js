@@ -198,7 +198,7 @@ exports.getUserContext = onCall(
       // Use Gemini Flash to synthesize a personalized context summary
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({model: "gemini-2.5-flash"});
+        const model = genAI.getGenerativeModel({model: "gemini-2.5-flash-lite"});
         const result = await model.generateContent(buildContextPrompt(contextData));
         const contextSummary = result.response.text().trim();
         logger.info("getUserContext: summary generated", {email, summary: contextSummary});
