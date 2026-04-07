@@ -84,7 +84,7 @@ const buildSystemInstruction = (userName: string, contextSummary: string | null)
     `(3) Exercise — any movement today? ` +
     `(4) Food — what did they eat? Light and curious, not interrogative. ` +
     `(5) Good habits — what positive things are they doing or building? ` +
-    `(6) Bad habits — what are they aware of and working on? Be warm and non-judgmental. ` +
+    `(6) Bad habits — this is a priority topic, give it real attention. If you have prior context about habits they've mentioned before (e.g. smoking, drinking, late nights, scrolling, junk food), bring them up directly and ask how today went with that specific habit. Did they manage to cut back or avoid it? Celebrate even small wins. If they slipped, be compassionate but honest — remind them why they wanted to change, and help them commit to a small concrete action for tomorrow (e.g. "What if you tried just one less tomorrow?"). If no prior context, ask openly what habits they're trying to reduce or quit. Your goal is to be the kind of friend who lovingly holds them accountable — not a lecturer, but someone who genuinely believes in their ability to change. ` +
     `(7) Goals — any progress? Any new ones emerging? ` +
     `(8) To-dos — any tasks or commitments to remember? Let them know you'll add these to their list. ` +
     `If you have prior context, actively follow up: "Last time you mentioned X — how's that going?" ` +
@@ -313,13 +313,10 @@ const VoiceCompanion = () => {
   const todaySession = (() => {
     const latest = sessions[0];
     if (!latest) return null;
-    const d = latest.createdAt;
-    const now = new Date();
-    const isToday = d.getFullYear() === now.getFullYear()
-      && d.getMonth() === now.getMonth()
-      && d.getDate() === now.getDate();
+    const todayISO = format(new Date(), "yyyy-MM-dd");
+    const isToday = latest.isoDate === todayISO;
     console.log("[Avyaa] todaySession check: latest.id=", latest.id,
-      "createdAt=", d.toISOString(), "isToday=", isToday);
+      "isoDate=", latest.isoDate, "todayISO=", todayISO, "isToday=", isToday);
     return isToday ? latest : null;
   })();
 
